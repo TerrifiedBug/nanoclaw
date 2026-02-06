@@ -247,13 +247,13 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     missedMessages[missedMessages.length - 1].timestamp;
   saveState();
 
-  if (response.status === 'responded' && response.userMessage) {
+  if (response.outputType === 'message' && response.userMessage) {
     await sendMessage(chatJid, `${ASSISTANT_NAME}: ${response.userMessage}`);
   }
 
   if (response.internalLog) {
     logger.info(
-      { group: group.name, agentStatus: response.status },
+      { group: group.name, outputType: response.outputType },
       `Agent: ${response.internalLog}`,
     );
   }
@@ -320,7 +320,7 @@ async function runAgent(
       return 'error';
     }
 
-    return output.result ?? { status: 'silent' };
+    return output.result ?? { outputType: 'log' };
   } catch (err) {
     logger.error({ group: group.name, err }, 'Agent error');
     return 'error';
@@ -468,6 +468,7 @@ async function processTaskIpc(
     context_mode?: string;
     groupFolder?: string;
     chatJid?: string;
+    targetJid?: string;
     // For register_group
     jid?: string;
     name?: string;
@@ -484,27 +485,27 @@ async function processTaskIpc(
         data.prompt &&
         data.schedule_type &&
         data.schedule_value &&
-        data.groupFolder
+        data.targetJid
       ) {
-        // Authorization: non-main groups can only schedule for themselves
-        const targetGroup = data.groupFolder;
-        if (!isMain && targetGroup !== sourceGroup) {
+        // Resolve the target group from JID
+        const targetJid = data.targetJid as string;
+        const targetGroupEntry = registeredGroups[targetJid];
+
+        if (!targetGroupEntry) {
           logger.warn(
-            { sourceGroup, targetGroup },
-            'Unauthorized schedule_task attempt blocked',
+            { targetJid },
+            'Cannot schedule task: target group not registered',
           );
           break;
         }
 
-        // Resolve the correct JID for the target group (don't trust IPC payload)
-        const targetJid = Object.entries(registeredGroups).find(
-          ([, group]) => group.folder === targetGroup,
-        )?.[0];
+        const targetFolder = targetGroupEntry.folder;
 
-        if (!targetJid) {
+        // Authorization: non-main groups can only schedule for themselves
+        if (!isMain && targetFolder !== sourceGroup) {
           logger.warn(
-            { targetGroup },
-            'Cannot schedule task: target group not registered',
+            { sourceGroup, targetFolder },
+            'Unauthorized schedule_task attempt blocked',
           );
           break;
         }
@@ -554,7 +555,7 @@ async function processTaskIpc(
             : 'isolated';
         createTask({
           id: taskId,
-          group_folder: targetGroup,
+          group_folder: targetFolder,
           chat_jid: targetJid,
           prompt: data.prompt,
           schedule_type: scheduleType,
@@ -565,7 +566,7 @@ async function processTaskIpc(
           created_at: new Date().toISOString(),
         });
         logger.info(
-          { taskId, sourceGroup, targetGroup, contextMode },
+          { taskId, sourceGroup, targetFolder, contextMode },
           'Task created via IPC',
         );
       }

@@ -256,8 +256,16 @@ export class GroupQueue {
     // Stop all active containers gracefully
     for (const { jid, proc, containerName } of activeProcs) {
       if (containerName) {
-        logger.info({ jid, containerName }, 'Stopping container');
-        exec(`container stop ${containerName}`);
+        // Defense-in-depth: re-sanitize before shell interpolation.
+        // Primary sanitization is in container-runner.ts when building the name,
+        // but we sanitize again here since exec() runs through a shell.
+        const safeName = containerName.replace(/[^a-zA-Z0-9-]/g, '');
+        logger.info({ jid, containerName: safeName }, 'Stopping container');
+        exec(`container stop ${safeName}`, (err) => {
+          if (err) {
+            logger.warn({ jid, containerName: safeName, err: err.message }, 'container stop failed');
+          }
+        });
       } else {
         logger.info({ jid, pid: proc.pid }, 'Sending SIGTERM to process');
         proc.kill('SIGTERM');

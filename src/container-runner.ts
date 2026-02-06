@@ -41,7 +41,7 @@ export interface ContainerInput {
 }
 
 export interface AgentResponse {
-  status: 'responded' | 'silent';
+  outputType: 'message' | 'log';
   userMessage?: string;
   internalLog?: string;
 }

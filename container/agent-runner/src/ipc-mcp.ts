@@ -42,7 +42,7 @@ export function createIpcMcp(ctx: IpcMcpContext) {
     tools: [
       tool(
         'send_message',
-        'Send a message to the current WhatsApp group. Use this to proactively share information or updates.',
+        'Send a message to the user or group. The message is delivered immediately while you\'re still running. You can call this multiple times to send multiple messages.',
         {
           text: z.string().describe('The message text to send')
         },
@@ -55,12 +55,12 @@ export function createIpcMcp(ctx: IpcMcpContext) {
             timestamp: new Date().toISOString()
           };
 
-          const filename = writeIpcFile(MESSAGES_DIR, data);
+          writeIpcFile(MESSAGES_DIR, data);
 
           return {
             content: [{
               type: 'text',
-              text: `Message queued for delivery (${filename})`
+              text: 'Message sent.'
             }]
           };
         }
@@ -71,10 +71,10 @@ export function createIpcMcp(ctx: IpcMcpContext) {
         `Schedule a recurring or one-time task. The task will run as a full agent with access to all tools.
 
 CONTEXT MODE - Choose based on task type:
-• "group" (recommended for most tasks): Task runs in the group's conversation context, with access to chat history and memory. Use for tasks that need context about ongoing discussions, user preferences, or previous interactions.
+• "group": Task runs in the group's conversation context, with access to chat history. Use for tasks that need context about ongoing discussions, user preferences, or recent interactions.
 • "isolated": Task runs in a fresh session with no conversation history. Use for independent tasks that don't need prior context. When using isolated mode, include all necessary context in the prompt itself.
 
-If unsure which mode to use, ask the user. Examples:
+If unsure which mode to use, you can ask the user. Examples:
 - "Remind me about our discussion" → group (needs conversation context)
 - "Check the weather every morning" → isolated (self-contained task)
 - "Follow up on my request" → group (needs to know what was requested)
@@ -89,7 +89,7 @@ SCHEDULE VALUE FORMAT (all times are LOCAL timezone):
           schedule_type: z.enum(['cron', 'interval', 'once']).describe('cron=recurring at specific times, interval=recurring every N ms, once=run once at specific time'),
           schedule_value: z.string().describe('cron: "*/5 * * * *" | interval: milliseconds like "300000" | once: local timestamp like "2026-02-01T15:30:00" (no Z suffix!)'),
           context_mode: z.enum(['group', 'isolated']).default('group').describe('group=runs with chat history and memory, isolated=fresh session (include context in prompt)'),
-          target_group: z.string().optional().describe('Target group folder (main only, defaults to current group)')
+          ...(isMain ? { target_group_jid: z.string().optional().describe('JID of the group to schedule the task for. The group must be registered — look up JIDs in /workspace/project/data/registered_groups.json (the keys are JIDs). If the group is not registered, let the user know and ask if they want to activate it. Defaults to the current group.') } : {}),
         },
         async (args) => {
           // Validate schedule_value before writing IPC
@@ -121,7 +121,7 @@ SCHEDULE VALUE FORMAT (all times are LOCAL timezone):
           }
 
           // Non-main groups can only schedule for themselves
-          const targetGroup = isMain && args.target_group ? args.target_group : groupFolder;
+          const targetJid = isMain && args.target_group_jid ? args.target_group_jid : chatJid;
 
           const data = {
             type: 'schedule_task',
@@ -129,8 +129,7 @@ SCHEDULE VALUE FORMAT (all times are LOCAL timezone):
             schedule_type: args.schedule_type,
             schedule_value: args.schedule_value,
             context_mode: args.context_mode || 'group',
-            groupFolder: targetGroup,
-            chatJid,
+            targetJid,
             createdBy: groupFolder,
             timestamp: new Date().toISOString()
           };
