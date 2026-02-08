@@ -2,7 +2,7 @@
  * Container Runner for NanoClaw
  * Spawns agent execution in Apple Container and handles IPC
  */
-import { ChildProcess, exec, spawn } from 'child_process';
+import { ChildProcess, exec, execSync, spawn } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -202,6 +202,18 @@ function buildVolumeMounts(
     mounts.push(...validatedMounts);
   }
 
+  // Docker bind mounts preserve host ownership; ensure writable mounts
+  // are accessible by the container's node user (UID 1000)
+  for (const mount of mounts) {
+    if (!mount.readonly) {
+      try {
+        execSync(`chown -R 1000:1000 "${mount.hostPath}"`, { stdio: 'pipe' });
+      } catch {
+        // Non-fatal: may already be correct or path may not exist yet
+      }
+    }
+  }
+
   return mounts;
 }
 
@@ -268,7 +280,7 @@ export async function runContainerAgent(
   fs.mkdirSync(logsDir, { recursive: true });
 
   return new Promise((resolve) => {
-    const container = spawn('container', containerArgs, {
+    const container = spawn('docker', containerArgs, {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
@@ -367,7 +379,8 @@ export async function runContainerAgent(
     const killOnTimeout = () => {
       timedOut = true;
       logger.error({ group: group.name, containerName }, 'Container timeout, stopping gracefully');
-      exec(`container stop ${containerName}`, { timeout: 15000 }, (err) => {
+      // Graceful stop: sends SIGTERM, waits, then SIGKILL — lets --rm fire
+      exec(`docker stop ${containerName}`, { timeout: 15000 }, (err) => {
         if (err) {
           logger.warn({ group: group.name, containerName, err }, 'Graceful stop failed, force killing');
           container.kill('SIGKILL');

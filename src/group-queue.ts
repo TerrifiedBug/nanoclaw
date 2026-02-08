@@ -294,9 +294,50 @@ export class GroupQueue {
       }
     }
 
-    logger.info(
-      { activeCount: this.activeCount, detachedContainers: activeContainers },
-      'GroupQueue shutting down (containers detached, not killed)',
-    );
+    if (activeProcs.length === 0) return;
+
+    // Stop all active containers gracefully
+    for (const { jid, proc, containerName } of activeProcs) {
+      if (containerName) {
+        // Defense-in-depth: re-sanitize before shell interpolation.
+        // Primary sanitization is in container-runner.ts when building the name,
+        // but we sanitize again here since exec() runs through a shell.
+        const safeName = containerName.replace(/[^a-zA-Z0-9-]/g, '');
+        logger.info({ jid, containerName: safeName }, 'Stopping container');
+        exec(`docker stop ${safeName}`, (err) => {
+          if (err) {
+            logger.warn({ jid, containerName: safeName, err: err.message }, 'docker stop failed');
+          }
+        });
+      } else {
+        logger.info({ jid, pid: proc.pid }, 'Sending SIGTERM to process');
+        proc.kill('SIGTERM');
+      }
+    }
+
+    // Wait for grace period
+    await new Promise<void>((resolve) => {
+      const checkInterval = setInterval(() => {
+        const alive = activeProcs.filter(
+          ({ proc }) => !proc.killed && proc.exitCode === null,
+        );
+        if (alive.length === 0) {
+          clearInterval(checkInterval);
+          resolve();
+        }
+      }, 500);
+
+      setTimeout(() => {
+        clearInterval(checkInterval);
+        // SIGKILL survivors
+        for (const { jid, proc } of activeProcs) {
+          if (!proc.killed && proc.exitCode === null) {
+            logger.warn({ jid, pid: proc.pid }, 'Sending SIGKILL to container');
+            proc.kill('SIGKILL');
+          }
+        }
+        resolve();
+      }, gracePeriodMs);
+    });
   }
 }
