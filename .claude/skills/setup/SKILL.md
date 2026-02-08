@@ -27,12 +27,19 @@ which docker && docker info >/dev/null 2>&1 && echo "Docker: installed and runni
 
 ### If NOT on macOS (Linux, etc.)
 
-Apple Container is macOS-only. Use Docker instead.
+Apple Container is macOS-only. Docker is the container runtime on Linux.
 
 Tell the user:
-> You're on Linux, so we'll use Docker for container isolation. Let me set that up now.
+> You're on Linux, so we'll use Docker for container isolation.
 
-**Use the `/convert-to-docker` skill** to convert the codebase to Docker, then continue to Section 3.
+**Verify Docker is installed and running.** If not, tell the user to install Docker first:
+```bash
+# For Ubuntu/Debian:
+sudo apt-get update && sudo apt-get install -y docker.io
+sudo systemctl enable docker && sudo systemctl start docker
+```
+
+The codebase already supports Docker — the source code uses `docker` commands for container operations. Continue to Section 3.
 
 ### If on macOS
 
@@ -79,6 +86,106 @@ Ask the user:
 > Do you want to use your **Claude subscription** (Pro/Max) or an **Anthropic API key**?
 
 ### Option 1: Claude Subscription (Recommended)
+
+**First, detect if the environment is headless** (no browser available):
+
+```bash
+# Check for display/browser
+[ -n "$DISPLAY" ] || [ -n "$WAYLAND_DISPLAY" ] || echo "HEADLESS"
+```
+
+#### If headless (e.g., VPS/server):
+
+On headless servers, `claude setup-token` can't open a browser but will display a URL. Use `expect` to run it in a PTY so it works properly:
+
+1. Install expect if not available:
+```bash
+which expect || apt-get install -y expect 2>/dev/null || yum install -y expect 2>/dev/null
+```
+
+2. Create and run an expect script that captures the auth URL:
+```bash
+cat > /tmp/setup-token.exp << 'EXPECT_EOF'
+#!/usr/bin/expect -f
+set timeout 120
+set stty_init "columns 500 rows 50"
+log_file -noappend /tmp/setup-token-debug.log
+
+spawn claude setup-token
+
+# Wait for "Paste" prompt (indicates URL has been shown)
+expect {
+    -re {Paste} {
+        puts "\n===READY_FOR_CODE==="
+    }
+    timeout {
+        puts "\n===TIMEOUT==="
+        exit 1
+    }
+}
+
+# Wait for code file
+for {set i 0} {$i < 300} {incr i} {
+    if {[file exists "/tmp/oauth_code.txt"]} {
+        set f [open "/tmp/oauth_code.txt" "r"]
+        set code [string trim [gets $f]]
+        close $f
+        if {$code ne ""} {
+            break
+        }
+    }
+    sleep 1
+}
+
+if {![info exists code] || $code eq ""} {
+    puts "No code provided"
+    exit 1
+}
+
+send "$code\r"
+
+set timeout 30
+expect {
+    eof { puts "\n===DONE===" }
+    timeout { puts "\n===TIMEOUT_AFTER_CODE===" }
+}
+EXPECT_EOF
+chmod +x /tmp/setup-token.exp
+```
+
+3. Run the expect script in background, extract the URL, and show it to the user:
+```bash
+rm -f /tmp/oauth_code.txt /tmp/setup-token-debug.log
+expect /tmp/setup-token.exp &
+sleep 20
+# Extract URL from debug log
+grep -o 'https://claude.ai/oauth/authorize[^ ]*' /tmp/setup-token-debug.log | tr -d '\n'
+```
+
+4. Show the URL to the user and ask them to open it in any browser (on their phone, laptop, etc.), sign in, and paste the authorization code.
+
+5. When they provide the code, write it to the file the expect script is watching:
+```bash
+echo "THE_CODE_HERE" > /tmp/oauth_code.txt
+```
+
+6. Wait ~15 seconds for the token exchange to complete, then verify:
+```bash
+cat ~/.claude/.credentials.json 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(f'Token type: {d.get(\"claudeAiOauth\",{}).get(\"subscriptionType\",\"unknown\")}')" 2>/dev/null || echo "Check .credentials.json manually"
+```
+
+7. Extract the token and save to `.env`:
+```bash
+TOKEN=$(cat ~/.claude/.credentials.json 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['claudeAiOauth']['accessToken'])" 2>/dev/null)
+if [ -n "$TOKEN" ]; then
+  echo "CLAUDE_CODE_OAUTH_TOKEN=$TOKEN" > .env
+  echo "Token saved to .env"
+else
+  echo "ERROR: Could not extract token"
+fi
+```
+
+#### If not headless (has browser):
 
 Tell the user:
 > Open another terminal window and run:
@@ -141,6 +248,37 @@ fi
 
 **USER ACTION REQUIRED**
 
+First, check if already authenticated:
+```bash
+[ -f store/auth/creds.json ] && node -e "const c=require('./store/auth/creds.json'); if(c.registered) { console.log('Already authenticated'); process.exit(0); } else { process.exit(1); }" 2>/dev/null && echo "SKIP" || echo "NEED_AUTH"
+```
+
+If already authenticated, skip to the next step.
+
+### If headless / running on a remote server:
+
+Terminal QR codes may not display correctly in tool output due to character width issues. Use the HTTP QR server instead:
+
+1. Install the qrcode npm package if not present:
+```bash
+npm list qrcode 2>/dev/null || npm install qrcode @types/qrcode --save-dev
+```
+
+2. Run `src/wa-auth-server.ts` which starts an HTTP server on port 8899:
+```bash
+npx tsx src/wa-auth-server.ts
+```
+
+This serves the QR code as a proper SVG image on a web page. Tell the user:
+> Open **http://YOUR_SERVER_IP:8899** in your browser to see the QR code.
+> On your phone: WhatsApp → Settings → Linked Devices → Link a Device → scan the QR code.
+
+**IMPORTANT:** The auth server automatically reconnects after WhatsApp's 515 stream errors, which commonly occur during initial pairing on headless servers.
+
+Wait for the script to output "Successfully authenticated" then continue.
+
+### If running locally with a proper terminal:
+
 **IMPORTANT:** Run this command in the **foreground**. The QR code is multi-line ASCII art that must be displayed in full. Do NOT run in background or truncate the output.
 
 Tell the user:
@@ -156,8 +294,6 @@ npm run auth
 ```
 
 Wait for the script to output "Successfully authenticated" then continue.
-
-If it says "Already authenticated", skip to the next step.
 
 ## 6. Configure Assistant Name and Main Channel
 
@@ -223,6 +359,12 @@ npm run dev
 **For personal chat** (they chose option 1):
 
 Personal chats are NOT synced to the database on startup — only groups are. Instead, ask the user for their phone number (with country code, no + or spaces, e.g. `14155551234`), then construct the JID as `{number}@s.whatsapp.net`.
+
+**IMPORTANT:** Verify the phone number by cross-referencing with the WhatsApp connection log. After the brief `npm run dev`, check the log for the own JID:
+```bash
+grep "myPN" logs/nanoclaw.log | tail -1
+```
+This will show the actual phone number WhatsApp uses (e.g., `441234567890:16@s.whatsapp.net`). Use the number from this log (without the `:16` device suffix) as the JID. The user may accidentally include extra digits (e.g., typing `4441234567890` instead of `441234567890` for a UK number).
 
 **For group** (they chose option 2 or 3):
 
@@ -381,7 +523,63 @@ Tell the user:
 > ```
 > The folder appears inside the container at `/workspace/extra/<folder-name>` (derived from the last segment of the path). Add `"readonly": false` for write access, or `"containerPath": "custom-name"` to override the default name.
 
-## 8. Configure launchd Service
+## 8. Configure Service
+
+Detect the platform and set up the appropriate service manager:
+
+```bash
+echo "Platform: $(uname -s)"
+```
+
+### Linux: systemd
+
+Create a systemd service unit:
+
+```bash
+NODE_PATH=$(which node)
+PROJECT_PATH=$(pwd)
+
+cat > /etc/systemd/system/nanoclaw.service << EOF
+[Unit]
+Description=NanoClaw WhatsApp Agent
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+ExecStart=${NODE_PATH} ${PROJECT_PATH}/dist/index.js
+WorkingDirectory=${PROJECT_PATH}
+Restart=always
+RestartSec=10
+Environment=HOME=${HOME}
+Environment=PATH=/usr/local/bin:/usr/bin:/bin:${HOME}/.local/bin
+StandardOutput=append:${PROJECT_PATH}/logs/nanoclaw.log
+StandardError=append:${PROJECT_PATH}/logs/nanoclaw.error.log
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+echo "Created systemd service with:"
+echo "  Node: ${NODE_PATH}"
+echo "  Project: ${PROJECT_PATH}"
+```
+
+Build and start:
+```bash
+npm run build
+mkdir -p logs
+systemctl daemon-reload
+systemctl enable nanoclaw
+systemctl start nanoclaw
+```
+
+Verify:
+```bash
+systemctl status nanoclaw
+```
+
+### macOS: launchd
 
 Generate the plist file with correct paths automatically:
 
@@ -465,19 +663,30 @@ The user should receive a response in WhatsApp.
   - Docker: `docker info` (start Docker Desktop on macOS, or `sudo systemctl start docker` on Linux)
 - Check container logs: `cat groups/main/logs/container-*.log | tail -50`
 
+**Container agent fails with EACCES permission errors on `/home/node/.claude`**:
+- This happens when Docker bind mounts create directories as root but Claude Code runs as the `node` user (UID 1000) inside the container.
+- The `container-runner.ts` automatically runs `chown -R 1000:1000` on writable mounts before spawning containers.
+- If the issue persists, manually fix: `chown -R 1000:1000 data/sessions/`
+
 **No response to messages**:
 - Verify the trigger pattern matches (e.g., `@AssistantName` at start of message)
 - Main channel doesn't require a prefix — all messages are processed
 - Personal/solo chats with `requiresTrigger: false` also don't need a prefix
 - Check that the chat JID is in the database: `sqlite3 store/messages.db "SELECT * FROM registered_groups"`
+- **Verify JID is correct:** Compare with the WhatsApp-reported number in logs: `grep "myPN" logs/nanoclaw.log | tail -1`
 - Check `logs/nanoclaw.log` for errors
 
-**WhatsApp disconnected**:
-- The service will show a macOS notification
-- Run `npm run auth` to re-authenticate
-- Restart the service: `launchctl kickstart -k gui/$(id -u)/com.nanoclaw`
+**WhatsApp 515 stream errors during auth**:
+- This is a known Baileys issue. The `wa-auth-server.ts` script handles this automatically by reconnecting.
+- If using `npm run auth` directly, the connection may fail after QR scan. Use `wa-auth-server.ts` instead.
 
-**Unload service**:
-```bash
-launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist
-```
+**WhatsApp disconnected**:
+- On macOS: The service will show a macOS notification
+- Run `npm run auth` (or `npx tsx src/wa-auth-server.ts` on headless) to re-authenticate
+- Restart the service:
+  - Linux: `systemctl restart nanoclaw`
+  - macOS: `launchctl kickstart -k gui/$(id -u)/com.nanoclaw`
+
+**Stop/unload service**:
+- Linux: `systemctl stop nanoclaw` / `systemctl disable nanoclaw`
+- macOS: `launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist`
