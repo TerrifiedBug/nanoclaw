@@ -438,6 +438,7 @@ export async function runContainerAgent(
         } catch { /* non-fatal */ }
       }
 
+
       if (timedOut) {
         const ts = new Date().toISOString().replace(/[:.]/g, '-');
         const timeoutLog = path.join(logsDir, `container-${ts}.log`);

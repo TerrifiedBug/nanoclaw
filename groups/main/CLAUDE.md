@@ -76,7 +76,7 @@ Main has access to the entire project:
 
 Key paths inside the container:
 - `/workspace/project/store/messages.db` - SQLite database
-- `/workspace/project/data/registered_groups.json` - Group config
+- `/workspace/project/store/messages.db` (registered_groups table) - Group config
 - `/workspace/project/groups/` - All group folders
 
 ---

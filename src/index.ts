@@ -1171,6 +1171,7 @@ async function main(): Promise<void> {
     logger.info('Auto-registered business DM as main channel');
   }
 
+
   // Graceful shutdown handlers
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'Shutdown signal received');

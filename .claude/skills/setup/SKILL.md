@@ -192,6 +192,7 @@ Tell the user:
 
 **Note:** No need to manually extract the token. NanoClaw syncs the credentials file into containers automatically and the SDK handles token refresh.
 
+
 ### Option 2: API Key
 
 Ask if they have an existing key to copy or need to create one.
@@ -268,6 +269,7 @@ This serves the QR code as a proper SVG image on a web page. Tell the user:
 Wait for the script to output "Successfully authenticated" then continue.
 
 ### If running locally with a proper terminal:
+
 
 **IMPORTANT:** Run this command in the **foreground**. The QR code is multi-line ASCII art that must be displayed in full. Do NOT run in background or truncate the output.
 
@@ -355,6 +357,7 @@ Personal chats are NOT synced to the database on startup — only groups are. In
 grep "myPN" logs/nanoclaw.log | tail -1
 ```
 This will show the actual phone number WhatsApp uses (e.g., `441234567890:16@s.whatsapp.net`). Use the number from this log (without the `:16` device suffix) as the JID. The user may accidentally include extra digits (e.g., typing `44441234567890` instead of `441234567890` for a UK number).
+
 
 **For group** (they chose option 2 or 3):
 
