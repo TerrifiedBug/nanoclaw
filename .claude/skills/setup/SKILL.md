@@ -364,7 +364,7 @@ Personal chats are NOT synced to the database on startup — only groups are. In
 ```bash
 grep "myPN" logs/nanoclaw.log | tail -1
 ```
-This will show the actual phone number WhatsApp uses (e.g., `441234567890:16@s.whatsapp.net`). Use the number from this log (without the `:16` device suffix) as the JID. The user may accidentally include extra digits (e.g., typing `4441234567890` instead of `441234567890` for a UK number).
+This will show the actual phone number WhatsApp uses (e.g., `441234567890:16@s.whatsapp.net`). Use the number from this log (without the `:16` device suffix) as the JID. The user may accidentally include extra digits (e.g., typing `44441234567890` instead of `441234567890` for a UK number).
 
 **For group** (they chose option 2 or 3):
 
