@@ -236,6 +236,26 @@ export function storeMessage(
   );
 }
 
+/**
+ * Store a webhook-originated message (plain strings, no Baileys dependency).
+ * Inserts into the messages table and updates chat metadata so the
+ * polling loop picks it up like any other message.
+ */
+export function storeWebhookMessage(
+  chatJid: string,
+  messageId: string,
+  source: string,
+  text: string,
+): void {
+  const timestamp = new Date().toISOString();
+
+  storeChatMetadata(chatJid, timestamp, source);
+
+  db.prepare(
+    `INSERT OR REPLACE INTO messages (id, chat_jid, sender, sender_name, content, timestamp, is_from_me) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(messageId, chatJid, `webhook:${source}`, source, text, timestamp, 0);
+}
+
 export function getNewMessages(
   jids: string[],
   lastTimestamp: string,

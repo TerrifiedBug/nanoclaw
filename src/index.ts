@@ -23,6 +23,7 @@ import {
   STORE_DIR,
   TIMEZONE,
   TRIGGER_PATTERN,
+  WEBHOOK_SECRET,
 } from './config.js';
 import {
   AvailableGroup,
@@ -50,12 +51,14 @@ import {
   setSession,
   storeChatMetadata,
   storeMessage,
+  storeWebhookMessage,
   updateChatName,
   updateTask,
 } from './db.js';
 import { GroupQueue } from './group-queue.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { NewMessage, RegisteredGroup } from './types.js';
+import { startWebhookServer } from './webhook-server.js';
 import { logger } from './logger.js';
 
 const GROUP_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -801,6 +804,7 @@ async function connectWhatsApp(): Promise<void> {
       keys: makeCacheableSignalKeyStore(state.keys, logger),
     },
     printQRInTerminal: false,
+    syncFullHistory: false,
     logger,
     browser: ['NanoClaw', 'Chrome', '1.0.0'],
   });
@@ -927,6 +931,7 @@ async function connectBusinessWhatsApp(): Promise<void> {
       keys: makeCacheableSignalKeyStore(state.keys, logger),
     },
     printQRInTerminal: false,
+    syncFullHistory: false,
     logger,
     browser: ['NanoClaw-Biz', 'Chrome', '1.0.0'],
   });
@@ -991,6 +996,11 @@ async function connectBusinessWhatsApp(): Promise<void> {
           msg.key.fromMe || false,
           msg.pushName || undefined,
         );
+
+        // Send read receipt for incoming messages
+        if (!msg.key.fromMe) {
+          bizSock.readMessages([msg.key]).catch(() => {});
+        }
       }
     }
   });
@@ -1172,9 +1182,28 @@ async function main(): Promise<void> {
   }
 
 
+  // Start webhook server if secret is configured
+  let webhookServer: import('http').Server | null = null;
+  if (WEBHOOK_SECRET) {
+    webhookServer = startWebhookServer({
+      getMainChannelJid: () => {
+        const entry = Object.entries(registeredGroups).find(
+          ([, g]) => g.folder === MAIN_GROUP_FOLDER,
+        );
+        return entry ? entry[0] : null;
+      },
+      insertMessage: storeWebhookMessage,
+    });
+  } else {
+    logger.debug('Webhook server disabled (no WEBHOOK_SECRET set)');
+  }
+
   // Graceful shutdown handlers
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'Shutdown signal received');
+    if (webhookServer) {
+      webhookServer.close();
+    }
     await queue.shutdown(10000);
     if (businessSock) {
       businessSock.end(undefined);
