@@ -9,8 +9,14 @@ store/
 data/
 logs/
 
-# Per-group memory (contains personal info)
-groups/
+# Groups - only track base CLAUDE.md files (not personal memory/data)
+groups/*
+!groups/main/
+!groups/global/
+groups/main/*
+groups/global/*
+!groups/main/CLAUDE.md
+!groups/global/CLAUDE.md
 
 # Secrets
 *.keys.json
