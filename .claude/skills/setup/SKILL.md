@@ -174,16 +174,12 @@ echo "THE_CODE_HERE" > /tmp/oauth_code.txt
 cat ~/.claude/.credentials.json 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(f'Token type: {d.get(\"claudeAiOauth\",{}).get(\"subscriptionType\",\"unknown\")}')" 2>/dev/null || echo "Check .credentials.json manually"
 ```
 
-7. Extract the token and save to `.env`:
+7. Verify the credentials file was saved:
 ```bash
-TOKEN=$(cat ~/.claude/.credentials.json 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['claudeAiOauth']['accessToken'])" 2>/dev/null)
-if [ -n "$TOKEN" ]; then
-  echo "CLAUDE_CODE_OAUTH_TOKEN=$TOKEN" > .env
-  echo "Token saved to .env"
-else
-  echo "ERROR: Could not extract token"
-fi
+[ -f ~/.claude/.credentials.json ] && echo "Credentials saved — token will auto-sync to containers" || echo "ERROR: No credentials file found"
 ```
+
+**Note:** The token is NOT stored in `.env`. NanoClaw automatically copies `~/.claude/.credentials.json` into each container on spawn. The SDK handles token refresh automatically using the refresh token in the credentials file.
 
 #### If not headless (has browser):
 
@@ -192,15 +188,9 @@ Tell the user:
 > ```
 > claude setup-token
 > ```
-> A browser window will open for you to log in. Once authenticated, the token will be displayed in your terminal. Either:
-> 1. Paste it here and I'll add it to `.env` for you, or
-> 2. Add it to `.env` yourself as `CLAUDE_CODE_OAUTH_TOKEN=<your-token>`
+> A browser window will open for you to log in. Once authenticated, credentials are saved to `~/.claude/.credentials.json`.
 
-If they give you the token, add it to `.env`:
-
-```bash
-echo "CLAUDE_CODE_OAUTH_TOKEN=<token>" > .env
-```
+**Note:** No need to manually extract the token. NanoClaw syncs the credentials file into containers automatically and the SDK handles token refresh.
 
 ### Option 2: API Key
 

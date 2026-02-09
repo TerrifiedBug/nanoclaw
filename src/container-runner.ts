@@ -149,6 +149,14 @@ function buildVolumeMounts(
       }
     }
   }
+  // Sync host credentials for automatic OAuth token refresh
+  // Claude Code SDK reads ~/.claude/.credentials.json natively and handles refresh
+  const hostCredsFile = path.join(getHomeDir(), '.claude', '.credentials.json');
+  if (fs.existsSync(hostCredsFile)) {
+    const destCredsFile = path.join(groupSessionsDir, '.credentials.json');
+    fs.copyFileSync(hostCredsFile, destCredsFile);
+  }
+
   mounts.push({
     hostPath: groupSessionsDir,
     containerPath: '/home/node/.claude',
@@ -174,7 +182,7 @@ function buildVolumeMounts(
   const envFile = path.join(projectRoot, '.env');
   if (fs.existsSync(envFile)) {
     const envContent = fs.readFileSync(envFile, 'utf-8');
-    const allowedVars = ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY', 'BRAVE_API_KEY', 'GH_TOKEN', 'NOTION_API_KEY', 'GOG_KEYRING_PASSWORD', 'GOG_ACCOUNT'];
+    const allowedVars = ['ANTHROPIC_API_KEY', 'BRAVE_API_KEY', 'GH_TOKEN', 'NOTION_API_KEY', 'GOG_KEYRING_PASSWORD', 'GOG_ACCOUNT'];
     const filteredLines = envContent.split('\n').filter((line) => {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith('#')) return false;
@@ -412,6 +420,23 @@ export async function runContainerAgent(
     container.on('close', (code) => {
       clearTimeout(timeout);
       const duration = Date.now() - startTime;
+
+      // Sync refreshed OAuth credentials back to host
+      // If SDK refreshed the token inside the container, propagate to host
+      const groupCredsFile = path.join(
+        DATA_DIR, 'sessions', group.folder, '.claude', '.credentials.json',
+      );
+      const hostCreds = path.join(getHomeDir(), '.claude', '.credentials.json');
+      if (fs.existsSync(groupCredsFile) && fs.existsSync(hostCreds)) {
+        try {
+          const containerCreds = JSON.parse(fs.readFileSync(groupCredsFile, 'utf-8'));
+          const currentCreds = JSON.parse(fs.readFileSync(hostCreds, 'utf-8'));
+          if (containerCreds.claudeAiOauth?.expiresAt > (currentCreds.claudeAiOauth?.expiresAt || 0)) {
+            fs.writeFileSync(hostCreds, JSON.stringify(containerCreds), { mode: 0o600 });
+            logger.info({ group: group.name }, 'Synced refreshed OAuth credentials back to host');
+          }
+        } catch { /* non-fatal */ }
+      }
 
       if (timedOut) {
         const ts = new Date().toISOString().replace(/[:.]/g, '-');
