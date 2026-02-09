@@ -9,14 +9,8 @@ store/
 data/
 logs/
 
-# Groups - only track base structure and specific CLAUDE.md files
-groups/*
-!groups/main/
-!groups/global/
-groups/main/*
-groups/global/*
-!groups/main/CLAUDE.md
-!groups/global/CLAUDE.md
+# Per-group memory (contains personal info)
+groups/
 
 # Secrets
 *.keys.json
@@ -24,6 +18,7 @@ groups/global/*
 
 # OS
 .DS_Store
+socket:*
 
 # IDE
 .idea/

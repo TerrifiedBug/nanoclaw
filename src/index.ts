@@ -12,6 +12,9 @@ import { CronExpressionParser } from 'cron-parser';
 
 import {
   ASSISTANT_NAME,
+  BUSINESS_AUTH_DIR,
+  BUSINESS_DM_TARGET_JID,
+  BUSINESS_JID_PREFIX,
   DATA_DIR,
   IDLE_TIMEOUT,
   IPC_POLL_INTERVAL,
@@ -58,6 +61,7 @@ import { logger } from './logger.js';
 const GROUP_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 let sock: WASocket;
+let businessSock: WASocket | null = null;
 let lastTimestamp = '';
 let sessions: Record<string, string> = {};
 let registeredGroups: Record<string, RegisteredGroup> = {};
@@ -91,7 +95,19 @@ function translateJid(jid: string): string {
 
 async function setTyping(jid: string, isTyping: boolean): Promise<void> {
   try {
-    await sock.sendPresenceUpdate(isTyping ? 'composing' : 'paused', jid);
+    let targetSock: WASocket;
+    let actualJid: string;
+
+    if (jid.startsWith(BUSINESS_JID_PREFIX)) {
+      if (!businessSock) return;
+      targetSock = businessSock;
+      actualJid = jid.slice(BUSINESS_JID_PREFIX.length);
+    } else {
+      targetSock = sock;
+      actualJid = jid;
+    }
+
+    await targetSock.sendPresenceUpdate(isTyping ? 'composing' : 'paused', actualJid);
   } catch (err) {
     logger.debug({ jid, err }, 'Failed to update typing status');
   }
@@ -387,8 +403,23 @@ async function sendMessage(jid: string, text: string): Promise<void> {
     return;
   }
   try {
-    await sock.sendMessage(jid, { text });
-    logger.info({ jid, length: text.length }, 'Message sent');
+    let targetSock: WASocket;
+    let actualJid: string;
+
+    if (jid.startsWith(BUSINESS_JID_PREFIX)) {
+      if (!businessSock) {
+        logger.error({ jid }, 'Business socket not connected, cannot send');
+        return;
+      }
+      targetSock = businessSock;
+      actualJid = jid.slice(BUSINESS_JID_PREFIX.length);
+    } else {
+      targetSock = sock;
+      actualJid = jid;
+    }
+
+    await targetSock.sendMessage(actualJid, { text });
+    logger.info({ jid: actualJid, length: text.length }, 'Message sent');
   } catch (err) {
     // If send fails, queue it for retry on reconnect
     outgoingQueue.push({ jid, text });
@@ -885,6 +916,86 @@ async function connectWhatsApp(): Promise<void> {
   });
 }
 
+async function connectBusinessWhatsApp(): Promise<void> {
+  fs.mkdirSync(BUSINESS_AUTH_DIR, { recursive: true });
+
+  const { state, saveCreds } = await useMultiFileAuthState(BUSINESS_AUTH_DIR);
+
+  const bizSock = makeWASocket({
+    auth: {
+      creds: state.creds,
+      keys: makeCacheableSignalKeyStore(state.keys, logger),
+    },
+    printQRInTerminal: false,
+    logger,
+    browser: ['NanoClaw-Biz', 'Chrome', '1.0.0'],
+  });
+
+  bizSock.ev.on('connection.update', (update) => {
+    const { connection, lastDisconnect, qr } = update;
+
+    if (qr) {
+      logger.error('Business WhatsApp needs authentication. Run: npm run auth-business');
+      // Don't exit — primary socket continues running
+    }
+
+    if (connection === 'close') {
+      const reason = (lastDisconnect?.error as any)?.output?.statusCode;
+      const shouldReconnect = reason !== DisconnectReason.loggedOut;
+      logger.info({ reason, shouldReconnect }, 'Business connection closed');
+
+      if (shouldReconnect) {
+        logger.info('Reconnecting business socket...');
+        setTimeout(() => connectBusinessWhatsApp(), 3000);
+      } else {
+        logger.warn('Business socket logged out. Run: npm run auth-business');
+        businessSock = null;
+      }
+    } else if (connection === 'open') {
+      logger.info('Business WhatsApp connected');
+      businessSock = bizSock;
+
+      // Build LID to phone mapping for business socket
+      if (bizSock.user) {
+        const phoneUser = bizSock.user.id.split(':')[0];
+        const lidUser = bizSock.user.lid?.split(':')[0];
+        if (lidUser && phoneUser) {
+          lidToPhoneMap[lidUser] = `${phoneUser}@s.whatsapp.net`;
+          logger.debug({ lidUser, phoneUser }, 'Business LID to phone mapping set');
+        }
+      }
+    }
+  });
+
+  bizSock.ev.on('creds.update', saveCreds);
+
+  bizSock.ev.on('messages.upsert', ({ messages }) => {
+    for (const msg of messages) {
+      if (!msg.message) continue;
+      const rawJid = msg.key.remoteJid;
+      if (!rawJid || rawJid === 'status@broadcast') continue;
+
+      // Namespace business socket JIDs with prefix to avoid collision with primary
+      const chatJid = BUSINESS_JID_PREFIX + translateJid(rawJid);
+
+      const timestamp = new Date(
+        Number(msg.messageTimestamp) * 1000,
+      ).toISOString();
+
+      storeChatMetadata(chatJid, timestamp);
+
+      if (registeredGroups[chatJid]) {
+        storeMessage(
+          msg,
+          chatJid,
+          msg.key.fromMe || false,
+          msg.pushName || undefined,
+        );
+      }
+    }
+  });
+}
+
 async function startMessageLoop(): Promise<void> {
   if (messageLoopRunning) {
     logger.debug('Message loop already running, skipping duplicate start');
@@ -1043,16 +1154,41 @@ async function main(): Promise<void> {
   logger.info('Database initialized');
   loadState();
 
+  // Auto-register business DM channel if auth and target JID are configured
+  const bizDmJid = BUSINESS_DM_TARGET_JID
+    ? `${BUSINESS_JID_PREFIX}${BUSINESS_DM_TARGET_JID}`
+    : '';
+  if (bizDmJid && !registeredGroups[bizDmJid] && fs.existsSync(BUSINESS_AUTH_DIR)) {
+    registerGroup(bizDmJid, {
+      name: 'Business DM',
+      folder: 'business-dm',
+      trigger: `@${ASSISTANT_NAME}`,
+      added_at: new Date().toISOString(),
+      requiresTrigger: false,
+    });
+    logger.info('Auto-registered business DM channel');
+  }
+
   // Graceful shutdown handlers
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'Shutdown signal received');
     await queue.shutdown(10000);
+    if (businessSock) {
+      businessSock.end(undefined);
+    }
     process.exit(0);
   };
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));
 
   await connectWhatsApp();
+
+  // Connect business WhatsApp if auth exists (non-fatal if it fails)
+  if (fs.existsSync(BUSINESS_AUTH_DIR)) {
+    connectBusinessWhatsApp().catch((err) => {
+      logger.error({ err }, 'Failed to connect business WhatsApp');
+    });
+  }
 }
 
 main().catch((err) => {

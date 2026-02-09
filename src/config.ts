@@ -16,6 +16,9 @@ export const MOUNT_ALLOWLIST_PATH = path.join(
   'mount-allowlist.json',
 );
 export const STORE_DIR = path.resolve(PROJECT_ROOT, 'store');
+export const BUSINESS_AUTH_DIR = path.resolve(PROJECT_ROOT, 'store', 'auth-business');
+export const BUSINESS_JID_PREFIX = 'biz:';
+export const BUSINESS_DM_TARGET_JID = process.env.BUSINESS_DM_TARGET_JID || '';
 export const GROUPS_DIR = path.resolve(PROJECT_ROOT, 'groups');
 export const DATA_DIR = path.resolve(PROJECT_ROOT, 'data');
 export const MAIN_GROUP_FOLDER = 'main';

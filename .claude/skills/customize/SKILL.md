@@ -26,6 +26,46 @@ This skill helps users add capabilities or modify behavior. Use AskUserQuestion 
 | `.mcp.json` | MCP server configuration (reference) |
 | `groups/CLAUDE.md` | Global memory/persona |
 
+## Adding Skills to NanoClaw Agents
+
+**Important distinction:** `.claude/skills/` in the project root are for Claude Code in this terminal (setup, debug, customize). Agent skills live in `container/skills/` and are auto-discovered inside containers.
+
+### How agent skills work
+
+Skills in `container/skills/{name}/SKILL.md` are mounted read-only at `/workspace/.claude/skills/` inside the container. Claude Code's walk-up discovery finds them automatically — no rebuild needed.
+
+The agent also loads knowledge from:
+1. **`groups/global/CLAUDE.md`** — shared across ALL groups
+2. **`groups/{folder}/CLAUDE.md`** — specific to one group
+
+### Adding a skill for all groups
+
+Create `container/skills/{name}/SKILL.md` with standard Claude Code skill frontmatter:
+
+```markdown
+---
+name: my-skill
+description: What this skill does and when to use it.
+allowed-tools: Bash(tool-name:*)
+---
+
+# Skill instructions here
+```
+
+No container rebuild needed — just add the file and restart NanoClaw.
+
+### Adding knowledge for one group only
+
+Add a section to that group's `groups/{folder}/CLAUDE.md`.
+
+### Importing skills from OpenClaw or external sources
+
+1. Fetch the skill content (e.g., from `https://github.com/openclaw/openclaw/blob/main/skills/{name}/SKILL.md`)
+2. Save it as `container/skills/{name}/SKILL.md` (keep the frontmatter — the agent uses it)
+3. If the skill requires system packages (e.g., `ffmpeg`) not in the container, add them to `container/Dockerfile` and rebuild with `./container/build.sh`
+4. If the skill requires npm packages, install them in `container/agent-runner/` and rebuild
+5. Restart NanoClaw
+
 ## Common Customization Patterns
 
 ### Adding a New Input Channel (e.g., Telegram, Slack, Email)
@@ -88,12 +128,14 @@ Implementation:
 
 ## After Changes
 
-Always tell the user:
+Rebuild and restart. Detect the platform first:
+
 ```bash
-# Rebuild and restart
 npm run build
-launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist
-launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist
+# Linux (systemd):
+systemctl restart nanoclaw
+# macOS (launchd):
+launchctl kickstart -k gui/$(id -u)/com.nanoclaw
 ```
 
 ## Example Interaction

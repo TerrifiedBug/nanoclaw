@@ -62,6 +62,17 @@ function buildVolumeMounts(
   const homeDir = getHomeDir();
   const projectRoot = process.cwd();
 
+  // Agent skills directory — mounted at /workspace/.claude/skills/ so Claude Code's
+  // walk-up from /workspace/group discovers them automatically
+  const skillsDir = path.join(projectRoot, 'container', 'skills');
+  if (fs.existsSync(skillsDir)) {
+    mounts.push({
+      hostPath: skillsDir,
+      containerPath: '/workspace/.claude/skills',
+      readonly: true,
+    });
+  }
+
   if (isMain) {
     // Main gets the entire project root mounted
     mounts.push({
@@ -163,7 +174,7 @@ function buildVolumeMounts(
   const envFile = path.join(projectRoot, '.env');
   if (fs.existsSync(envFile)) {
     const envContent = fs.readFileSync(envFile, 'utf-8');
-    const allowedVars = ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY'];
+    const allowedVars = ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY', 'BRAVE_API_KEY', 'GH_TOKEN', 'NOTION_API_KEY', 'GOG_KEYRING_PASSWORD', 'GOG_ACCOUNT'];
     const filteredLines = envContent.split('\n').filter((line) => {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith('#')) return false;
@@ -183,14 +194,16 @@ function buildVolumeMounts(
     }
   }
 
-  // Mount agent-runner source from host — recompiled on container startup.
-  // Bypasses Apple Container's sticky build cache for code changes.
-  const agentRunnerSrc = path.join(projectRoot, 'container', 'agent-runner', 'src');
-  mounts.push({
-    hostPath: agentRunnerSrc,
-    containerPath: '/app/src',
-    readonly: true,
-  });
+  // gog CLI config (Google OAuth credentials + tokens) — shared across all containers
+  // Uses data/gogcli/ copy (chowned to UID 1000) rather than ~/.config/gogcli/ (owned by root)
+  const gogConfigDir = path.join(DATA_DIR, 'gogcli');
+  if (fs.existsSync(gogConfigDir)) {
+    mounts.push({
+      hostPath: gogConfigDir,
+      containerPath: '/home/node/.config/gogcli',
+      readonly: true,
+    });
+  }
 
   // Additional mounts validated against external allowlist (tamper-proof from containers)
   if (group.containerConfig?.additionalMounts) {
