@@ -1154,19 +1154,21 @@ async function main(): Promise<void> {
   logger.info('Database initialized');
   loadState();
 
-  // Auto-register business DM channel if auth and target JID are configured
+  // Auto-register business DM as main channel if auth and target JID are configured
+  // Business WhatsApp replaces personal DM as the main channel so users get proper
+  // push notifications (personal "DM yourself" doesn't notify)
   const bizDmJid = BUSINESS_DM_TARGET_JID
     ? `${BUSINESS_JID_PREFIX}${BUSINESS_DM_TARGET_JID}`
     : '';
   if (bizDmJid && !registeredGroups[bizDmJid] && fs.existsSync(BUSINESS_AUTH_DIR)) {
     registerGroup(bizDmJid, {
-      name: 'Business DM',
-      folder: 'business-dm',
+      name: 'main',
+      folder: MAIN_GROUP_FOLDER,
       trigger: `@${ASSISTANT_NAME}`,
       added_at: new Date().toISOString(),
       requiresTrigger: false,
     });
-    logger.info('Auto-registered business DM channel');
+    logger.info('Auto-registered business DM as main channel');
   }
 
   // Graceful shutdown handlers
