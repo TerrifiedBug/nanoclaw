@@ -44,8 +44,14 @@ When working as a sub-agent or teammate, only use `send_message` if instructed t
 
 The `conversations/` folder contains searchable history of past conversations. Use this to recall context from previous sessions.
 
+You have two persistent memory systems. Use the right one:
+- **MEMORY.md** (auto-loaded every session) — standing rules, personal preferences, routines, things you should always know (e.g., "when X happens, also do Y")
+- **claude-mem** (searchable database) — facts, past events, learnings, things you might need to recall later
+
 When you learn something important:
-- Create files for structured data (e.g., `customers.md`, `preferences.md`)
+- Standing rules and preferences → MEMORY.md
+- Facts and event history → claude-mem
+- Structured data → create files (e.g., `customers.md`, `preferences.md`)
 - Split files larger than 500 lines into folders
 - Keep an index in your memory for the files you create
 

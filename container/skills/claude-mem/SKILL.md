@@ -1,6 +1,6 @@
 ---
-name: memory
-description: Search and save persistent memories across sessions. Use proactively when the user mentions something that might have prior context, when you learn important facts about the user, or when asked to remember something. Also search before making assumptions about recurring topics.
+name: claude-mem
+description: Search and save to the claude-mem persistent database. Use for facts, event history, and learnings you might need to recall later. NOT for standing rules or preferences — those go in MEMORY.md.
 allowed-tools: Bash(curl:*)
 ---
 
