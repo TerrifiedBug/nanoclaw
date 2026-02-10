@@ -12,6 +12,7 @@ import {
 } from './config.js';
 import { ContainerOutput, runContainerAgent, writeTasksSnapshot } from './container-runner.js';
 import {
+  claimTask,
   getAllTasks,
   getDueTasks,
   getTaskById,
@@ -38,6 +39,11 @@ async function runTask(
   const startTime = Date.now();
   const groupDir = path.join(GROUPS_DIR, task.group_folder);
   fs.mkdirSync(groupDir, { recursive: true });
+
+  // Claim the task immediately so the scheduler won't re-enqueue it
+  // while the container is still running (next_run stays NULL until
+  // updateTaskAfterRun sets the real next run after completion)
+  claimTask(task.id);
 
   logger.info(
     { taskId: task.id, group: task.group_folder },
@@ -84,6 +90,7 @@ async function runTask(
 
   let result: string | null = null;
   let error: string | null = null;
+  let hadSuccessfulResponse = false;
 
   // For group context mode, use the group's current session
   const sessions = deps.getSessions();
@@ -121,6 +128,7 @@ async function runTask(
           const text = streamedOutput.result.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
           if (text) {
             await deps.sendMessage(task.chat_jid, `${deps.assistantName}: ${text}`);
+            hadSuccessfulResponse = true;
           }
           // Only reset idle timer on actual results, not session-update markers
           resetIdleTimer();
@@ -133,7 +141,14 @@ async function runTask(
 
     if (idleTimer) clearTimeout(idleTimer);
 
-    if (output.status === 'error') {
+    // If a response was already delivered, ignore late container timeout errors
+    if (output.status === 'error' && hadSuccessfulResponse) {
+      logger.info(
+        { taskId: task.id },
+        'Container timed out after successful response, treating as success',
+      );
+      error = null;
+    } else if (output.status === 'error') {
       error = output.error || 'Unknown error';
     } else if (output.result) {
       // Messages are sent via MCP tool (IPC), result text is just logged

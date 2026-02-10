@@ -390,6 +390,14 @@ export function deleteTask(id: string): void {
   db.prepare('DELETE FROM scheduled_tasks WHERE id = ?').run(id);
 }
 
+/**
+ * Claim a task for execution by clearing its next_run.
+ * Prevents the scheduler from re-enqueuing it while it's running.
+ */
+export function claimTask(id: string): void {
+  db.prepare(`UPDATE scheduled_tasks SET next_run = NULL WHERE id = ?`).run(id);
+}
+
 export function getDueTasks(): ScheduledTask[] {
   const now = new Date().toISOString();
   return db
