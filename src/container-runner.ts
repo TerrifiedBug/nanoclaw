@@ -182,12 +182,23 @@ function buildVolumeMounts(
   const envFile = path.join(projectRoot, '.env');
   if (fs.existsSync(envFile)) {
     const envContent = fs.readFileSync(envFile, 'utf-8');
-    const allowedVars = ['ANTHROPIC_API_KEY', 'BRAVE_API_KEY', 'GH_TOKEN', 'NOTION_API_KEY', 'GOG_KEYRING_PASSWORD', 'GOG_ACCOUNT', 'HA_URL', 'HA_TOKEN', 'FRESHRSS_URL', 'FRESHRSS_API_KEY', 'CLAUDE_MEM_URL', 'EMAIL_ACCOUNTS'];
+    const allowedVars = ['ANTHROPIC_API_KEY', 'BRAVE_API_KEY', 'GH_TOKEN', 'NOTION_API_KEY', 'GOG_KEYRING_PASSWORD', 'GOG_ACCOUNT', 'HA_URL', 'HA_TOKEN', 'FRESHRSS_URL', 'FRESHRSS_API_KEY', 'CLAUDE_MEM_URL', 'EMAIL_ACCOUNTS', 'CLAUDE_MODEL'];
     const filteredLines = envContent.split('\n').filter((line) => {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith('#')) return false;
       return allowedVars.some((v) => trimmed.startsWith(`${v}=`));
     });
+
+    // Override CLAUDE_MODEL from store file if it exists (set via /set-model skill)
+    const modelFile = path.join(projectRoot, 'store', 'claude-model');
+    if (fs.existsSync(modelFile)) {
+      const model = fs.readFileSync(modelFile, 'utf-8').trim();
+      if (model) {
+        const idx = filteredLines.findIndex((l) => l.trim().startsWith('CLAUDE_MODEL='));
+        if (idx >= 0) filteredLines[idx] = `CLAUDE_MODEL=${model}`;
+        else filteredLines.push(`CLAUDE_MODEL=${model}`);
+      }
+    }
 
     if (filteredLines.length > 0) {
       fs.writeFileSync(

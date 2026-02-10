@@ -375,6 +375,7 @@ async function runQuery(
     prompt: stream,
     options: {
       cwd: '/workspace/group',
+      ...(process.env.CLAUDE_MODEL ? { model: process.env.CLAUDE_MODEL } : {}),
       resume: sessionId,
       resumeSessionAt: resumeAt,
       systemPrompt: globalClaudeMd
