@@ -286,6 +286,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   await setTyping(chatJid, true);
   let hadError = false;
+  let hadSuccessfulResponse = false;
 
   const output = await runAgent(group, prompt, chatJid, async (result) => {
     // Streaming output callback — called for each agent result
@@ -296,6 +297,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       logger.info({ group: group.name }, `Agent output: ${raw.slice(0, 200)}`);
       if (text) {
         await sendMessage(chatJid, `${ASSISTANT_NAME}: ${text}`);
+        hadSuccessfulResponse = true;
       }
       // Only reset idle timer on actual results, not session-update markers (result: null)
       resetIdleTimer();
@@ -309,8 +311,9 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   await setTyping(chatJid, false);
   if (idleTimer) clearTimeout(idleTimer);
 
-  if (output === 'error' || hadError) {
-    // Roll back cursor so retries can re-process these messages
+  if ((output === 'error' || hadError) && !hadSuccessfulResponse) {
+    // Only roll back cursor if no response was sent — prevents duplicate
+    // messages when container timeout fires after a successful response
     lastAgentTimestamp[chatJid] = previousCursor;
     saveState();
     logger.warn({ group: group.name }, 'Agent error, rolled back message cursor for retry');
