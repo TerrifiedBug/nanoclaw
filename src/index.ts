@@ -919,6 +919,11 @@ async function connectWhatsApp(): Promise<void> {
           msg.pushName || undefined,
         );
       }
+
+      // Send read receipt for incoming messages
+      if (!msg.key.fromMe) {
+        sock.readMessages([msg.key]).catch(() => {});
+      }
     }
   });
 }
