@@ -182,7 +182,7 @@ function buildVolumeMounts(
   const envFile = path.join(projectRoot, '.env');
   if (fs.existsSync(envFile)) {
     const envContent = fs.readFileSync(envFile, 'utf-8');
-    const allowedVars = ['ANTHROPIC_API_KEY', 'BRAVE_API_KEY', 'GH_TOKEN', 'NOTION_API_KEY', 'GOG_KEYRING_PASSWORD', 'GOG_ACCOUNT', 'HA_URL', 'HA_TOKEN', 'FRESHRSS_URL', 'FRESHRSS_API_KEY', 'CLAUDE_MEM_URL'];
+    const allowedVars = ['ANTHROPIC_API_KEY', 'BRAVE_API_KEY', 'GH_TOKEN', 'NOTION_API_KEY', 'GOG_KEYRING_PASSWORD', 'GOG_ACCOUNT', 'HA_URL', 'HA_TOKEN', 'FRESHRSS_URL', 'FRESHRSS_API_KEY', 'CLAUDE_MEM_URL', 'EMAIL_ACCOUNTS'];
     const filteredLines = envContent.split('\n').filter((line) => {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith('#')) return false;

@@ -18,6 +18,7 @@ Single Node.js process that connects to WhatsApp, routes messages to Claude Agen
 | `groups/{name}/CLAUDE.md` | Per-group memory (isolated) |
 | `container/skills/agent-browser.md` | Browser automation tool (available to all agents via Bash) |
 | `container/skills/memory/SKILL.md` | Persistent cross-session memory via claude-mem API |
+| `container/skills/email/SKILL.md` | IMAP email reader (multi-provider: Gmail, Yahoo, etc.) |
 
 ## Skills
 
@@ -27,6 +28,7 @@ Single Node.js process that connects to WhatsApp, routes messages to Claude Agen
 | `/customize` | Adding channels, integrations, changing behavior |
 | `/debug` | Container issues, logs, troubleshooting |
 | `/add-claude-mem` | Set up persistent memory (claude-mem) for agent containers |
+| `/add-imap-read` | Add read-only IMAP email access (Gmail, Yahoo, Outlook, etc.) |
 
 ## Development
 
