@@ -33,6 +33,12 @@ ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
 # Install gog CLI (Google Calendar, Gmail, etc.)
 RUN curl -sL "https://github.com/steipete/gogcli/releases/download/v0.9.0/gogcli_0.9.0_linux_amd64.tar.gz" | tar -xz -C /usr/local/bin gog
 
+# Install cal CLI (CalDAV calendar access)
+COPY cal-cli/package*.json /tmp/cal-cli/
+RUN cd /tmp/cal-cli && npm install
+COPY cal-cli/ /tmp/cal-cli/
+RUN cd /tmp/cal-cli && npm run build && npm link
+
 # Install agent-browser and claude-code globally
 RUN npm install -g agent-browser @anthropic-ai/claude-code
 
@@ -58,7 +64,7 @@ RUN mkdir -p /workspace/group /workspace/global /workspace/extra /workspace/ipc/
 # Sources env from mounted /workspace/env-dir/env if it exists (workaround for Apple Container -i bug)
 # Stdin is buffered to /tmp then piped (Apple Container requires EOF to flush stdin pipe)
 # Follow-up messages arrive via IPC files in /workspace/ipc/input/
-RUN printf '#!/bin/bash\nset -e\n[ -f /workspace/env-dir/env ] && export $(cat /workspace/env-dir/env | xargs)\ncd /app && npx tsc --outDir /tmp/dist 2>&1 >&2\nln -s /app/node_modules /tmp/dist/node_modules\nchmod -R a-w /tmp/dist\ncat > /tmp/input.json\nnode /tmp/dist/index.js < /tmp/input.json\n' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
+RUN printf '#!/bin/bash\nset -e\nif [ -f /workspace/env-dir/env ]; then\n  while IFS= read -r line || [ -n "$line" ]; do\n    [ -z "$line" ] || [[ "$line" == \\#* ]] && continue\n    export "$line"\n  done < /workspace/env-dir/env\nfi\ncd /app && npx tsc --outDir /tmp/dist 2>&1 >&2\nln -s /app/node_modules /tmp/dist/node_modules\nchmod -R a-w /tmp/dist\ncat > /tmp/input.json\nnode /tmp/dist/index.js < /tmp/input.json\n' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
 # Set ownership to node user (non-root) for writable directories
 RUN chown -R node:node /workspace

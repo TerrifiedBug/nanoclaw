@@ -12,6 +12,10 @@ TAG="${1:-latest}"
 echo "Building NanoClaw agent container image..."
 echo "Image: ${IMAGE_NAME}:${TAG}"
 
+# Copy cal-cli source into build context (co-located with setup skill)
+cp -r "$SCRIPT_DIR/../.claude/skills/add-cal" "$SCRIPT_DIR/cal-cli"
+trap 'rm -rf "$SCRIPT_DIR/cal-cli"' EXIT
+
 # Build with Docker
 docker build -t "${IMAGE_NAME}:${TAG}" .
 
