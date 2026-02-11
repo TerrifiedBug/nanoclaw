@@ -18,9 +18,9 @@ Changes the Claude model for agent containers. Takes effect on the next agent tu
 
 | Model | ID |
 |-------|-----|
-| Sonnet 4.5 (default) | `claude-sonnet-4-5-20250929` |
+| Sonnet 4.5 (default) | `claude-sonnet-4-5` |
 | Opus 4.6 | `claude-opus-4-6` |
-| Haiku 4.5 | `claude-haiku-4-5-20251001` |
+| Haiku 4.5 | `claude-haiku-4-5` |
 
 ## Steps
 
