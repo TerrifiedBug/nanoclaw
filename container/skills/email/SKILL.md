@@ -1,12 +1,12 @@
 ---
-name: email-read
-description: Read-only email access via IMAP. Use when the user asks about their email, wants an inbox summary, or for morning digest email sections. Supports Gmail, Yahoo, Outlook, and any IMAP provider. This skill is READ ONLY — never send, delete, or modify emails.
+name: imap-read
+description: Email access via IMAP. Use when the user asks about their email, wants an inbox summary, or for morning digest email sections. Supports Gmail, Yahoo, Outlook, and any IMAP provider. Can mark emails as read to avoid duplicate digest entries. Never sends or deletes emails.
 allowed-tools: Bash(python3:*, curl:*)
 ---
 
-# Email Reader (IMAP — Read Only)
+# Email Reader (IMAP)
 
-Read emails from multiple accounts via IMAP. **This skill is strictly read-only** — never send, delete, or modify emails.
+Read emails from multiple accounts via IMAP. Can mark emails as read to prevent duplicate digest entries. **Never sends or deletes emails.**
 
 All accounts are configured in the `$EMAIL_ACCOUNTS` environment variable as a JSON array. Run `/add-imap-read` on the host to configure accounts.
 
@@ -91,14 +91,13 @@ print(json.dumps(results, indent=2))
 PYEOF
 ```
 
-## Read Emails from Last 24 Hours (For Digest)
+## Read Unread Emails for Digest (Then Mark as Read)
 
-Fetches all emails from the last 24 hours regardless of read status.
+Fetches unread emails and marks them as read so the next digest won't repeat them. Use this for daily/scheduled digests.
 
 ```bash
 python3 << 'PYEOF'
 import imaplib, email, json, os
-from datetime import datetime, timedelta
 from email.header import decode_header
 
 def decode_hdr(val):
@@ -122,7 +121,6 @@ def get_body_preview(msg, max_len=300):
             return payload.decode(msg.get_content_charset() or "utf-8", errors="replace")[:max_len]
     return ""
 
-since = (datetime.now() - timedelta(days=1)).strftime("%d-%b-%Y")
 accounts = json.loads(os.environ["EMAIL_ACCOUNTS"])
 results = []
 
@@ -130,10 +128,10 @@ for a in accounts:
     try:
         m = imaplib.IMAP4_SSL(a["host"], a.get("port", 993))
         m.login(a["user"], a["pass"])
-        m.select("INBOX", readonly=True)
-        _, data = m.search(None, f"SINCE {since}")
+        m.select("INBOX")  # Writable — needed to mark as read
+        _, data = m.search(None, "UNSEEN")
         uids = data[0].split() if data[0] else []
-        for uid in uids[-30:]:  # Last 30 max
+        for uid in uids[-30:]:  # Last 30 unread max
             _, msg_data = m.fetch(uid, "(BODY.PEEK[])")
             raw = msg_data[0][1]
             msg = email.message_from_bytes(raw)
@@ -145,6 +143,8 @@ for a in accounts:
                 "date": msg["Date"],
                 "preview": get_body_preview(msg)
             })
+            # Mark as read after successfully fetching
+            m.store(uid, "+FLAGS", "\\Seen")
         m.close(); m.logout()
     except Exception as e:
         results.append({"account": a["name"], "error": str(e)})
@@ -259,6 +259,60 @@ m.close(); m.logout()
 PYEOF
 ```
 
+## Mark Emails as Read
+
+After processing emails (e.g., in a digest), mark them as read so they won't appear in future unread fetches. Pass UIDs as arguments.
+
+```bash
+python3 << 'PYEOF'
+import imaplib, json, os, sys
+
+uids_to_mark = sys.argv[1:]  # Pass UIDs as arguments
+if not uids_to_mark:
+    print("Usage: python3 mark_read.py <uid1> <uid2> ...")
+    exit(1)
+
+accounts = json.loads(os.environ["EMAIL_ACCOUNTS"])
+# Mark across all accounts — IMAP silently ignores UIDs that don't exist in a mailbox
+for a in accounts:
+    try:
+        m = imaplib.IMAP4_SSL(a["host"], a.get("port", 993))
+        m.login(a["user"], a["pass"])
+        m.select("INBOX")  # Writable — no readonly flag
+        for uid in uids_to_mark:
+            m.store(uid.encode(), "+FLAGS", "\\Seen")
+        m.close(); m.logout()
+        print(f"{a['name']}: marked {len(uids_to_mark)} UIDs as read")
+    except Exception as e:
+        print(f"{a['name']}: ERROR - {e}")
+PYEOF
+```
+
+To mark specific emails from a specific account:
+
+```bash
+python3 << 'PYEOF'
+import imaplib, json, os, sys
+
+ACCOUNT_NAME = sys.argv[1]  # e.g., "Yahoo"
+uids_to_mark = sys.argv[2:]  # e.g., "123" "456"
+
+accounts = json.loads(os.environ["EMAIL_ACCOUNTS"])
+account = next((a for a in accounts if a["name"] == ACCOUNT_NAME), None)
+if not account:
+    print(json.dumps({"error": f"Account '{ACCOUNT_NAME}' not found"}))
+    exit(1)
+
+m = imaplib.IMAP4_SSL(account["host"], account.get("port", 993))
+m.login(account["user"], account["pass"])
+m.select("INBOX")  # Writable
+for uid in uids_to_mark:
+    m.store(uid.encode(), "+FLAGS", "\\Seen")
+m.close(); m.logout()
+print(f"Marked {len(uids_to_mark)} emails as read in {ACCOUNT_NAME}")
+PYEOF
+```
+
 ## Setup
 
 Set `EMAIL_ACCOUNTS` in `.env` as a JSON array:
@@ -274,7 +328,8 @@ EMAIL_ACCOUNTS=[{"name":"Gmail","host":"imap.gmail.com","port":993,"user":"you@g
 
 ## Notes
 
-- All reads use `readonly=True` and `BODY.PEEK[]` — emails are never marked as read
+- Most reads use `readonly=True` and `BODY.PEEK[]` — the digest script is the exception, marking fetched emails as read
+- The "Mark Emails as Read" script can be used separately to mark specific UIDs
 - Body preview is limited to 300 characters to avoid huge outputs
 - Unread fetch limited to 20 most recent, digest to 30, search to 10
 - Connections use IMAP4_SSL (port 993) — always encrypted
