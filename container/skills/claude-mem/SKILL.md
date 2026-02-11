@@ -1,12 +1,14 @@
 ---
 name: claude-mem
-description: Search and save to the claude-mem persistent database. Use for facts, event history, and learnings you might need to recall later. NOT for standing rules or preferences — those go in MEMORY.md.
+description: Search the claude-mem persistent database for past context. Conversations are captured automatically — use this skill to search and recall. Standing rules and preferences go in MEMORY.md instead.
 allowed-tools: Bash(curl:*)
 ---
 
 # Persistent Memory
 
-You have access to a persistent memory system that survives across sessions. Use it to remember important information about the user and recall context from previous conversations.
+Your conversations are automatically captured into a persistent memory database that survives across sessions. Use this skill to **search** for past context when needed.
+
+For standing rules and personal preferences, use `MEMORY.md` in your workspace instead — it's auto-loaded every session.
 
 **Important:** Always use `project=nanoclaw-mem` in all API calls to keep memories isolated from other systems.
 
@@ -15,24 +17,9 @@ You have access to a persistent memory system that survives across sessions. Use
 - User asks about something discussed previously
 - User references a person, project, or recurring topic
 - User says "remember when...", "last time...", or "did I tell you..."
-- You need context about user preferences, routines, or schedules
+- You need context about past decisions or plans
 - Before making assumptions about recurring topics
-
-## When to Save Memory
-
-- User states a preference ("I prefer morning meetings")
-- User shares a schedule change ("I'm taking the 10:19 train today instead")
-- You learn a new fact about the user's life, work, or relationships
-- User explicitly asks you to remember something
-- A decision or plan is made that will be relevant later
-- Important dates, events, or deadlines mentioned
-
-## When NOT to Save
-
-- Trivial greetings or small talk
-- Transient info ("what's the weather right now")
-- Information already in your CLAUDE.md files
-- Duplicate of something already saved (search first!)
+- Be proactive — search memory at the start of conversations about recurring topics
 
 ## Search Memory
 
@@ -60,24 +47,9 @@ See what happened around a specific observation:
 curl -s "$CLAUDE_MEM_URL/api/timeline?anchor=42&project=nanoclaw-mem"
 ```
 
-## Save a Memory
-
-```bash
-curl -s -X POST "$CLAUDE_MEM_URL/api/memory/save" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "text": "User prefers morning meetings before 10am. Mentioned during scheduling discussion.",
-    "title": "Meeting time preference",
-    "project": "nanoclaw-mem"
-  }' | jq .
-```
-
 ## Tips
 
-- Keep saved memories concise but include enough context to be useful later
-- Include dates when relevant ("Mentioned on Feb 10")
-- Use descriptive titles for easy scanning in search results
-- **Always search before saving** to avoid duplicates
 - Search queries should be broad enough to find related memories
-- You don't need to save everything -- focus on facts that will matter in future conversations
-- Be proactive -- search memory at the start of conversations about recurring topics
+- Use timeline to understand the context around a specific memory
+- If you learn a new standing rule or personal fact, save it to `MEMORY.md` — not here
+- Conversations are captured automatically — you rarely need to manually save

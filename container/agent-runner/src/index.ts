@@ -371,6 +371,16 @@ async function runQuery(
     globalClaudeMd = fs.readFileSync(globalClaudeMdPath, 'utf-8');
   }
 
+  // Load group MEMORY.md (personal standing rules, auto-loaded every session)
+  const memoryMdPath = '/workspace/group/MEMORY.md';
+  let memoryMd: string | undefined;
+  if (fs.existsSync(memoryMdPath)) {
+    memoryMd = fs.readFileSync(memoryMdPath, 'utf-8');
+  }
+
+  // Combine extra system context: global CLAUDE.md + group MEMORY.md
+  const extraContext = [globalClaudeMd, memoryMd && `# Personal Memory\n\n${memoryMd}`].filter(Boolean).join('\n\n---\n\n');
+
   for await (const message of query({
     prompt: stream,
     options: {
@@ -378,8 +388,8 @@ async function runQuery(
       ...(process.env.CLAUDE_MODEL ? { model: process.env.CLAUDE_MODEL } : {}),
       resume: sessionId,
       resumeSessionAt: resumeAt,
-      systemPrompt: globalClaudeMd
-        ? { type: 'preset' as const, preset: 'claude_code' as const, append: globalClaudeMd }
+      systemPrompt: extraContext
+        ? { type: 'preset' as const, preset: 'claude_code' as const, append: extraContext }
         : undefined,
       allowedTools: [
         'Bash',
