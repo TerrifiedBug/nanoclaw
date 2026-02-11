@@ -42,17 +42,16 @@ Files you create are saved in `/workspace/group/`. Use this for notes, research,
 
 ## Memory
 
-You have two persistent memory systems. Use the right one:
+You have two persistent memory systems:
 
-- **MEMORY.md** (auto-loaded every session) — personal standing rules, preferences, relationships, routines. Write here when the user tells you something personal or sets a rule you should always know. Never committed to git.
-- **claude-mem** (searchable database) — automatically captures facts, events, and learnings from your conversations. Use the claude-mem skill to *search* it when you need to recall past context.
+- **Auto-memory (MEMORY.md)** — Claude Code's built-in memory, auto-loaded every session. Use it for personal facts, standing rules, preferences, relationships, and routines. Write to it when the user tells you something you should always know.
+- **claude-mem** — searchable database that automatically captures facts and events from your conversations. Use the claude-mem skill to *search* for past context when needed. You rarely need to manually save to it.
 
 **Never modify the group CLAUDE.md file** — it defines capabilities and is maintained by the system.
 
 Other storage:
 - `conversations/` folder for past conversation history
 - Create structured files for larger datasets (e.g., `contacts.md`)
-- Split files larger than 500 lines into folders
 
 ## Message Formatting
 

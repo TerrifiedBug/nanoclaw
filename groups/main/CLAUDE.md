@@ -38,36 +38,16 @@ When working as a sub-agent or teammate, only use `send_message` if instructed t
 
 ## Memory
 
-You have two persistent memory systems. Use the right one for each type of information:
+You have two persistent memory systems:
 
-### MEMORY.md — Personal Standing Rules (auto-loaded every session)
+- **Auto-memory (MEMORY.md)** — Claude Code's built-in memory, auto-loaded every session. Use it for personal facts, standing rules, preferences, relationships, and routines. Write to it when the user tells you something you should always know.
+- **claude-mem** — searchable database that automatically captures facts and events from your conversations. Use the claude-mem skill to *search* for past context when needed. You rarely need to manually save to it.
 
-`MEMORY.md` in your workspace is injected into your system prompt every session. Use it for things you should *always* know without having to look up:
-- Personal facts about the user (e.g., relationships, where they live, where they work)
-- Standing preferences and rules (e.g., "always do X when Y happens")
-- Routines and recurring context (e.g., commute details, regular schedules)
-- Relationship context (e.g., who people are, nicknames, family members)
+**Never modify this CLAUDE.md file** — it defines your capabilities and is maintained by the system.
 
-Write to `MEMORY.md` whenever the user tells you something personal or sets a standing rule. This file is never committed to git.
-
-### claude-mem — Searchable Fact Database
-
-claude-mem automatically captures facts, events, and learnings from your conversations. You don't need to manually save to it. Use the claude-mem skill to *search* it when you need to recall past context:
-- What was discussed in previous conversations
-- Decisions and plans made previously
-- Facts learned about the user over time
-
-### What NOT to do
-
-- **Never modify this CLAUDE.md file** — it defines your capabilities and is maintained by the system
-- Don't save transient info (current weather, time-sensitive queries) to MEMORY.md
-- Standing rules and personal facts go in MEMORY.md — claude-mem handles the rest automatically
-
-### Other storage
-
+Other storage:
 - `conversations/` folder contains searchable history of past conversations
-- Create structured files (e.g., `preferences.md`, `contacts.md`) for larger datasets
-- Split files larger than 500 lines into folders
+- Create structured files (e.g., `contacts.md`) for larger datasets
 
 ## WhatsApp Formatting (and other messaging apps)
 
