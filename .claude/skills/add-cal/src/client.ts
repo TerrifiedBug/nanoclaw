@@ -95,11 +95,18 @@ function toICSDate(iso: string): string {
   return iso.replace(/[-:]/g, '').replace(/\.\d{3}/, '');
 }
 
+function toICSDateOnly(iso: string): string {
+  // Extract YYYYMMDD from an ISO date string
+  return iso.replace(/-/g, '').slice(0, 8);
+}
+
 function buildICalString(opts: {
   uid: string;
   summary: string;
   start: string;
   end: string;
+  allDay?: boolean;
+  rrule?: string;
   location?: string;
   description?: string;
 }): string {
@@ -110,10 +117,16 @@ function buildICalString(opts: {
     'BEGIN:VEVENT',
     `UID:${opts.uid}`,
     `DTSTAMP:${toICSDate(new Date().toISOString())}`,
-    `DTSTART:${toICSDate(opts.start)}`,
-    `DTEND:${toICSDate(opts.end)}`,
-    `SUMMARY:${opts.summary}`,
   ];
+  if (opts.allDay) {
+    lines.push(`DTSTART;VALUE=DATE:${toICSDateOnly(opts.start)}`);
+    lines.push(`DTEND;VALUE=DATE:${toICSDateOnly(opts.end)}`);
+  } else {
+    lines.push(`DTSTART:${toICSDate(opts.start)}`);
+    lines.push(`DTEND:${toICSDate(opts.end)}`);
+  }
+  lines.push(`SUMMARY:${opts.summary}`);
+  if (opts.rrule) lines.push(opts.rrule.startsWith('RRULE:') ? opts.rrule : `RRULE:${opts.rrule}`);
   if (opts.location) lines.push(`LOCATION:${opts.location}`);
   if (opts.description) lines.push(`DESCRIPTION:${opts.description}`);
   lines.push('END:VEVENT', 'END:VCALENDAR');
@@ -137,21 +150,87 @@ async function findCalendar(
   return match;
 }
 
+export async function deleteEvent(
+  account: CalDAVAccount,
+  calendarName: string,
+  search: string,
+): Promise<boolean> {
+  const client = await createClient(account);
+  const calendar = await findCalendar(client, calendarName, account.name);
+  if (!calendar) return false;
+
+  // Fetch all objects from this calendar (wide time range to catch recurring events)
+  const objects = await client.fetchCalendarObjects({ calendar });
+
+  const searchLower = search.toLowerCase();
+  const matches = objects.filter((obj) => {
+    if (!obj.data) return false;
+    const events = parseICS(obj.data, calendarName, account.name);
+    return events.some(
+      (e) =>
+        e.summary.toLowerCase().includes(searchLower) ||
+        e.uid.toLowerCase() === searchLower,
+    );
+  });
+
+  if (matches.length === 0) {
+    console.error(`No events matching "${search}" found in [${account.name}] ${calendarName}`);
+    return false;
+  }
+
+  if (matches.length > 1) {
+    console.error(`Multiple events match "${search}":`);
+    for (const obj of matches) {
+      const events = parseICS(obj.data!, calendarName, account.name);
+      for (const e of events) {
+        console.error(`  - "${e.summary}" (${e.start.toISOString()}) [uid: ${e.uid}]`);
+      }
+    }
+    console.error('Please use a more specific title or the UID to match a single event.');
+    return false;
+  }
+
+  const result = await client.deleteCalendarObject({ calendarObject: matches[0] });
+
+  if (result.ok) {
+    const events = parseICS(matches[0].data!, calendarName, account.name);
+    const title = events[0]?.summary || search;
+    console.log(`Deleted: "${title}" from [${account.name}] ${calendarName}`);
+    return true;
+  } else {
+    console.error(`Failed to delete event: ${result.status} ${result.statusText}`);
+    return false;
+  }
+}
+
 export async function createEvent(
   account: CalDAVAccount,
   calendarName: string,
   title: string,
   start: string,
   end: string,
-  location?: string,
-  description?: string,
+  options?: {
+    location?: string;
+    description?: string;
+    allDay?: boolean;
+    rrule?: string;
+  },
 ): Promise<boolean> {
   const client = await createClient(account);
   const calendar = await findCalendar(client, calendarName, account.name);
   if (!calendar) return false;
 
   const uid = `${randomUUID()}@nanoclaw`;
-  const iCalString = buildICalString({ uid, summary: title, start, end, location, description });
+  const iCalString = buildICalString({
+    uid,
+    summary: title,
+    start,
+    end,
+    allDay: options?.allDay,
+    rrule: options?.rrule,
+    location: options?.location,
+    description: options?.description,
+  });
 
   const result = await client.createCalendarObject({
     calendar,

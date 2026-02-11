@@ -41,7 +41,25 @@ cal events --account iCloud --from $(date -u +%Y-%m-%dT00:00:00Z) --to $(date -u
 cal create "Personal" --title "Dentist" --start 2024-03-01T10:00:00Z --end 2024-03-01T11:00:00Z
 cal create "Work" --title "Team standup" --start 2024-03-01T09:00:00Z --end 2024-03-01T09:30:00Z --location "Room 3"
 cal create "Home" --title "Plumber" --start 2024-03-01T14:00:00Z --end 2024-03-01T15:00:00Z --description "Fix kitchen tap" --account iCloud
+
+# Create an all-day event
+cal create "Personal" --title "Holiday" --start 2024-03-01 --end 2024-03-02 --all-day
+
+# Create a recurring event (every Tuesday, all-day)
+cal create "Work" --title "Office Day" --start 2024-03-05 --end 2024-03-06 --all-day --rrule "FREQ=WEEKLY;BYDAY=TU"
+
+# Create a recurring event (monthly on the 1st)
+cal create "Bills" --title "Rent Due" --start 2024-03-01T09:00:00Z --end 2024-03-01T09:30:00Z --rrule "FREQ=MONTHLY;BYMONTHDAY=1"
 ```
+
+# Delete an event (matches by title substring or UID)
+cal delete "Personal" --title "Dentist"
+cal delete "Work" --title "Office Day" --account iCloud
+```
+
+### CalDAV create options
+- `--all-day` — all-day event. Use date-only format for --start/--end (YYYY-MM-DD). --end should be the NEXT day.
+- `--rrule RULE` — recurrence rule in iCalendar format (without the `RRULE:` prefix). Examples: `FREQ=WEEKLY;BYDAY=TU`, `FREQ=MONTHLY;BYMONTHDAY=1`, `FREQ=YEARLY;BYMONTH=3;BYMONTHDAY=15`
 
 ### Environment
 - Requires `CALDAV_ACCOUNTS` environment variable (JSON array)
