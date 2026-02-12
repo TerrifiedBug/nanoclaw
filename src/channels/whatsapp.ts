@@ -1,4 +1,3 @@
-import { exec } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
@@ -9,7 +8,7 @@ import makeWASocket, {
   useMultiFileAuthState,
 } from '@whiskeysockets/baileys';
 
-import { STORE_DIR } from '../config.js';
+import { BUSINESS_AUTH_DIR, STORE_DIR } from '../config.js';
 import {
   getLastGroupSync,
   setLastGroupSync,
@@ -50,7 +49,10 @@ export class WhatsAppChannel implements Channel {
   }
 
   private async connectInternal(onFirstOpen?: () => void): Promise<void> {
-    const authDir = path.join(STORE_DIR, 'auth');
+    // Use business auth state if it exists, otherwise fall back to personal
+    const authDir = fs.existsSync(BUSINESS_AUTH_DIR)
+      ? BUSINESS_AUTH_DIR
+      : path.join(STORE_DIR, 'auth');
     fs.mkdirSync(authDir, { recursive: true });
 
     const { state, saveCreds } = await useMultiFileAuthState(authDir);
@@ -69,12 +71,7 @@ export class WhatsAppChannel implements Channel {
       const { connection, lastDisconnect, qr } = update;
 
       if (qr) {
-        const msg =
-          'WhatsApp authentication required. Run /setup in Claude Code.';
-        logger.error(msg);
-        exec(
-          `osascript -e 'display notification "${msg}" with title "NanoClaw" sound name "Basso"'`,
-        );
+        logger.error('WhatsApp authentication required. Run: npm run auth');
         setTimeout(() => process.exit(1), 1000);
       }
 
@@ -178,6 +175,11 @@ export class WhatsAppChannel implements Channel {
             timestamp,
             is_from_me: msg.key.fromMe || false,
           });
+        }
+
+        // Send read receipt for incoming messages
+        if (!msg.key.fromMe) {
+          this.sock.readMessages([msg.key]).catch(() => {});
         }
       }
     });
