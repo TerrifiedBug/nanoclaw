@@ -32,6 +32,10 @@ Here are the key findings from the research...
 
 Text inside `<internal>` tags is logged but not sent to the user. If you've already sent the key information via `send_message`, you can wrap the recap in `<internal>` to avoid sending it again.
 
+### Webhook alerts
+
+Messages tagged as `<alert source="..." time="...">` are from external services (Home Assistant, n8n, monitoring tools). These are event-driven notifications — something happened that the user asked to be alerted about. You MUST forward them to the user via `send_message` with a clear summary. Never suppress or wrap alerts entirely in `<internal>` tags.
+
 ### Sub-agents and teammates
 
 When working as a sub-agent or teammate, only use `send_message` if instructed to by the main agent.

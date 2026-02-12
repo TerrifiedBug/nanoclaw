@@ -1,6 +1,6 @@
 ---
 name: n8n
-description: Create and manage n8n automation workflows. Use n8n for frequent monitoring, event-driven alerts, and conditional triggers INSTEAD of scheduled tasks — saves tokens by only triggering the agent when something actually happens. Run `/add-n8n` on the host to configure.
+description: Create and manage n8n automation workflows. Best for monitoring EXTERNAL sources (email, stock prices, websites, APIs). NEVER use for Home Assistant state changes — use HA automations instead (they are instant). Run `/add-n8n` on the host to configure.
 allowed-tools: mcp__n8n(*), Bash(curl:*)
 ---
 
@@ -12,14 +12,14 @@ Create and manage automated workflows on n8n. n8n does the frequent polling (fre
 
 | Scenario | Use | Why |
 |---|---|---|
-| Alert based on Home Assistant state | **HA automation** → webhook | Event-driven, instant, no polling needed |
-| Alert based on external source (email, stock, API) | **n8n workflow** → webhook | HA can't monitor these; n8n polls for free |
+| Alert based on Home Assistant state (sensor, switch, etc.) | **HA automation** (use the homeassistant skill) | HA automations are instant and event-driven; do NOT use n8n for HA state monitoring |
+| Alert based on external source (email, stock, API, website) | **n8n workflow** → webhook | HA can't monitor these; n8n polls for free |
 | Daily/weekly digest combining multiple sources | **Scheduled task** | Always produces output, aggregates data |
 | One-off question or on-demand lookup | **Direct tool call** | No automation needed |
 
 **Decision order:**
-1. If the data source is **Home Assistant** → use an HA automation (instant, native)
-2. If the data source is **external** and checks are frequent → use n8n (free polling, zero tokens)
+1. If the data source is **Home Assistant** → ALWAYS use an HA automation (instant, event-driven). Follow the homeassistant skill instructions — if `rest_command` is missing, guide the user through setup. Never use n8n to poll HA sensors.
+2. If the data source is **external** (email, stock, API) → use n8n (only option for sources HA can't monitor)
 3. If the task **always produces output** (digests, summaries) → use a scheduled task
 
 ## How It Works
@@ -88,11 +88,6 @@ curl -s -X POST "$N8N_URL/api/v1/workflows" \
 > "Alert me immediately when I get an email from my boss"
 
 n8n workflow: Schedule Trigger (every 2 min) → IMAP node → Filter (from contains "boss@") → HTTP Request (webhook)
-
-### Home Assistant Event
-> "Tell me when the washing machine finishes"
-
-n8n workflow: Schedule Trigger (every 5 min) → HA API (power sensor) → IF (power < 5W AND was > 100W) → HTTP Request (webhook)
 
 ### Stock Price Alert
 > "Alert me if SRAD drops more than 3% today"

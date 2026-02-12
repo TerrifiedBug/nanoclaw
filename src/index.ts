@@ -221,9 +221,12 @@ function escapeXml(s: string): string {
 }
 
 function formatMessages(messages: NewMessage[]): string {
-  const lines = messages.map((m) =>
-    `<message sender="${escapeXml(m.sender_name)}" time="${m.timestamp}">${escapeXml(m.content)}</message>`,
-  );
+  const lines = messages.map((m) => {
+    if (m.sender.startsWith('webhook:')) {
+      return `<alert source="${escapeXml(m.sender_name)}" time="${m.timestamp}">${escapeXml(m.content)}</alert>`;
+    }
+    return `<message sender="${escapeXml(m.sender_name)}" time="${m.timestamp}">${escapeXml(m.content)}</message>`;
+  });
   return `<messages>\n${lines.join('\n')}\n</messages>`;
 }
 
@@ -297,9 +300,10 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       logger.info({ group: group.name }, `Agent output: ${raw.slice(0, 200)}`);
       if (text) {
         await sendMessage(chatJid, `${ASSISTANT_NAME}: ${text}`);
-        hadSuccessfulResponse = true;
       }
-      // Only reset idle timer on actual results, not session-update markers (result: null)
+      // Any non-null result counts as successful (agent may have used send_message
+      // and wrapped its recap in <internal> tags — that's intentional silence)
+      hadSuccessfulResponse = true;
       resetIdleTimer();
     }
 
@@ -310,6 +314,12 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   await setTyping(chatJid, false);
   if (idleTimer) clearTimeout(idleTimer);
+
+  // If agent finished without error but never sent a message, notify the user
+  if (!hadError && output !== 'error' && !hadSuccessfulResponse) {
+    logger.warn({ group: group.name }, 'Agent returned no output (silent completion)');
+    await sendMessage(chatJid, `${ASSISTANT_NAME}: Sorry, I wasn't able to complete that. Could you try again?`);
+  }
 
   if ((output === 'error' || hadError) && !hadSuccessfulResponse) {
     // Only roll back cursor if no response was sent — prevents duplicate

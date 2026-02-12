@@ -9,6 +9,16 @@ Run all commands automatically. Only pause if a step fails.
 
 **UX Note:** When asking the user questions, prefer using the `AskUserQuestion` tool instead of just outputting text.
 
+## How It Works
+
+The claude-mem worker daemon runs on the host (port 37777) and stores observations in a SQLite + vector DB at `/root/.claude-mem/`. A socat bridge exposes it to Docker containers via 172.17.0.1:37777.
+
+**Auto-capture:** The agent-runner (`container/agent-runner/src/index.ts`) has a built-in `PostToolUse` SDK hook. When `CLAUDE_MEM_URL` is set, every tool use (Bash, Read, MCP calls, etc.) is automatically saved to the database via `POST /api/memory/save`. No additional setup is needed — setting the env var enables it.
+
+**Search:** Container agents use the `claude-mem` container skill (`container/skills/claude-mem/SKILL.md`) to search past observations via `GET /api/search?query=...&project=nanoclaw-mem`.
+
+**Manual save:** Agents can also explicitly save facts via `POST /api/memory/save` with `project=nanoclaw-mem`.
+
 ## 1. Verify Prerequisites
 
 Check that claude-mem is installed:

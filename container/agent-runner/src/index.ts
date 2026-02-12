@@ -16,7 +16,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { query, HookCallback, PreCompactHookInput } from '@anthropic-ai/claude-agent-sdk';
+import { query, HookCallback, PreCompactHookInput, PostToolUseHookInput } from '@anthropic-ai/claude-agent-sdk';
 import { fileURLToPath } from 'url';
 
 interface ContainerInput {
@@ -56,6 +56,33 @@ interface SDKUserMessage {
 const IPC_INPUT_DIR = '/workspace/ipc/input';
 const IPC_INPUT_CLOSE_SENTINEL = path.join(IPC_INPUT_DIR, '_close');
 const IPC_POLL_MS = 500;
+
+// claude-mem auto-capture: save tool use observations to the worker API if configured
+const CLAUDE_MEM_URL = process.env.CLAUDE_MEM_URL;
+
+function postToClaudeMem(endpoint: string, body: Record<string, unknown>): void {
+  if (!CLAUDE_MEM_URL) return;
+  fetch(`${CLAUDE_MEM_URL}${endpoint}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }).catch(err => log(`[claude-mem] ${endpoint} error: ${err instanceof Error ? err.message : String(err)}`));
+}
+
+function createPostToolUseHook(groupFolder: string): HookCallback {
+  return async (input) => {
+    const h = input as PostToolUseHookInput;
+    const inputStr = typeof h.tool_input === 'string' ? h.tool_input : JSON.stringify(h.tool_input);
+    const responseStr = typeof h.tool_response === 'string' ? h.tool_response : JSON.stringify(h.tool_response);
+    const text = `[${groupFolder}] Tool: ${h.tool_name}\nInput: ${inputStr.slice(0, 500)}\nOutput: ${responseStr.slice(0, 2000)}`;
+    postToClaudeMem('/api/memory/save', {
+      text,
+      title: `${h.tool_name} (${groupFolder})`,
+      project: 'nanoclaw-mem',
+    });
+    return {};
+  };
+}
 
 /**
  * Push-based async iterable for streaming user messages to the SDK.
@@ -406,7 +433,10 @@ async function runQuery(
         },
       },
       hooks: {
-        PreCompact: [{ hooks: [createPreCompactHook()] }]
+        PreCompact: [{ hooks: [createPreCompactHook()] }],
+        ...(CLAUDE_MEM_URL ? {
+          PostToolUse: [{ hooks: [createPostToolUseHook(containerInput.groupFolder)] }],
+        } : {}),
       },
     }
   })) {
