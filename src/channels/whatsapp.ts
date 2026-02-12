@@ -278,7 +278,7 @@ export class WhatsAppChannel implements Channel {
       if (repo?.lidMapping?.getPNForLID) {
         const pnJid = await repo.lidMapping.getPNForLID(jid);
         if (pnJid) {
-          // getPNForLID returns "441234567890:0@s.whatsapp.net" — strip device suffix
+          // getPNForLID returns "phone:device@s.whatsapp.net" — strip device suffix
           const phoneUser = pnJid.split(':')[0];
           const phoneJid = `${phoneUser}@s.whatsapp.net`;
           this.lidToPhoneMap[lidUser] = phoneJid;
