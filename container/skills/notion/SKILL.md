@@ -6,7 +6,7 @@ allowed-tools: Bash(curl:*)
 
 # Notion API Access
 
-Interact with Notion pages and databases:
+Interact with Notion pages and databases. Requires `$NOTION_API_KEY` environment variable. If not configured, tell the user to run `/add-notion` on the host to set it up.
 
 ```bash
 # Read a page

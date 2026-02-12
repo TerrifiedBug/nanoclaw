@@ -6,7 +6,7 @@ allowed-tools: Bash(curl:*)
 
 # FreshRSS RSS Reader
 
-Access the user's self-hosted FreshRSS instance via the Google Reader API.
+Access the user's self-hosted FreshRSS instance via the Google Reader API. Requires `$FRESHRSS_URL`, `$FRESHRSS_USER`, and `$FRESHRSS_API_KEY` environment variables. If not configured, tell the user to run `/add-freshrss` on the host to set it up.
 
 **Environment variables:**
 - `FRESHRSS_URL` — Base URL of the FreshRSS instance (no trailing slash)

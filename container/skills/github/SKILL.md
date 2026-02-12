@@ -6,7 +6,7 @@ allowed-tools: Bash(curl:*)
 
 # GitHub API Access
 
-Monitor GitHub repositories and activity:
+Monitor GitHub repositories and activity. Requires `$GH_TOKEN` environment variable. If not configured, tell the user to run `/add-github` on the host to set it up.
 
 ```bash
 # Check for new PRs on main repos
