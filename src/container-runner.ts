@@ -200,7 +200,7 @@ function buildVolumeMounts(
   const envFile = path.join(projectRoot, '.env');
   if (fs.existsSync(envFile)) {
     const envContent = fs.readFileSync(envFile, 'utf-8');
-    const allowedVars = ['ANTHROPIC_API_KEY', 'BRAVE_API_KEY', 'GH_TOKEN', 'NOTION_API_KEY', 'GOG_KEYRING_PASSWORD', 'GOG_ACCOUNT', 'HA_URL', 'HA_TOKEN', 'FRESHRSS_URL', 'FRESHRSS_USER', 'FRESHRSS_API_KEY', 'CLAUDE_MEM_URL', 'EMAIL_ACCOUNTS', 'CALDAV_ACCOUNTS', 'CLAUDE_MODEL', 'NATIONAL_RAIL_TOKEN', 'N8N_URL', 'N8N_API_KEY', 'NANOCLAW_WEBHOOK_URL', 'NANOCLAW_WEBHOOK_SECRET'];
+    const allowedVars = ['ANTHROPIC_API_KEY', 'ASSISTANT_NAME', 'BRAVE_API_KEY', 'BUSINESS_DM_TARGET_JID', 'GH_TOKEN', 'NOTION_API_KEY', 'GOG_KEYRING_PASSWORD', 'GOG_ACCOUNT', 'HA_URL', 'HA_TOKEN', 'FRESHRSS_URL', 'FRESHRSS_USER', 'FRESHRSS_API_KEY', 'CLAUDE_MEM_URL', 'EMAIL_ACCOUNTS', 'CALDAV_ACCOUNTS', 'CLAUDE_MODEL', 'NATIONAL_RAIL_TOKEN', 'N8N_URL', 'N8N_API_KEY', 'NANOCLAW_WEBHOOK_URL', 'NANOCLAW_WEBHOOK_SECRET'];
     const filteredLines = envContent.split('\n').filter((line) => {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith('#')) return false;
