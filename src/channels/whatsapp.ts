@@ -64,7 +64,8 @@ export class WhatsAppChannel implements Channel {
       },
       printQRInTerminal: false,
       logger,
-      browser: ['NanoClaw', 'Chrome', '1.0.0'],
+      syncFullHistory: false,
+      browser: ['NanoClaw-Biz', 'Chrome', '1.0.0'],
     });
 
     this.sock.ev.on('connection.update', (update) => {
@@ -138,14 +139,16 @@ export class WhatsAppChannel implements Channel {
 
     this.sock.ev.on('creds.update', saveCreds);
 
-    this.sock.ev.on('messages.upsert', ({ messages }) => {
+    this.sock.ev.on('messages.upsert', async ({ messages }) => {
+      logger.debug({ count: messages.length }, 'messages.upsert received');
       for (const msg of messages) {
         if (!msg.message) continue;
         const rawJid = msg.key.remoteJid;
         if (!rawJid || rawJid === 'status@broadcast') continue;
 
         // Translate LID JID to phone JID if applicable
-        const chatJid = this.translateJid(rawJid);
+        const chatJid = await this.translateJid(rawJid);
+        logger.debug({ rawJid, chatJid, fromMe: msg.key.fromMe }, 'Processing message');
 
         const timestamp = new Date(
           Number(msg.messageTimestamp) * 1000,
@@ -258,14 +261,35 @@ export class WhatsAppChannel implements Channel {
     }
   }
 
-  private translateJid(jid: string): string {
+  private async translateJid(jid: string): Promise<string> {
     if (!jid.endsWith('@lid')) return jid;
     const lidUser = jid.split('@')[0].split(':')[0];
-    const phoneJid = this.lidToPhoneMap[lidUser];
-    if (phoneJid) {
-      logger.debug({ lidJid: jid, phoneJid }, 'Translated LID to phone JID');
-      return phoneJid;
+
+    // Check local cache first
+    const cached = this.lidToPhoneMap[lidUser];
+    if (cached) {
+      logger.debug({ lidJid: jid, phoneJid: cached }, 'Translated LID from cache');
+      return cached;
     }
+
+    // Query Baileys' signal repository for the LID→PN mapping
+    try {
+      const repo = (this.sock as any).signalRepository;
+      if (repo?.lidMapping?.getPNForLID) {
+        const pnJid = await repo.lidMapping.getPNForLID(jid);
+        if (pnJid) {
+          // getPNForLID returns "441234567890:0@s.whatsapp.net" — strip device suffix
+          const phoneUser = pnJid.split(':')[0];
+          const phoneJid = `${phoneUser}@s.whatsapp.net`;
+          this.lidToPhoneMap[lidUser] = phoneJid;
+          logger.info({ lidJid: jid, phoneJid }, 'Translated LID via signal repository');
+          return phoneJid;
+        }
+      }
+    } catch (err) {
+      logger.warn({ err, jid }, 'Failed to translate LID via signal repository');
+    }
+
     return jid;
   }
 
