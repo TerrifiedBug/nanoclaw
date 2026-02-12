@@ -638,19 +638,19 @@ function migrateBizPrefix(database: Database.Database): void {
     'Migrating biz: prefix from legacy dual-socket setup',
   );
 
+  // Disable FK checks during migration — we're updating both sides of the
+  // messages.chat_jid → chats.jid relationship and the order would violate constraints.
+  database.pragma('foreign_keys = OFF');
+
   const migrate = database.transaction(() => {
     // 1. registered_groups: strip biz: prefix from JID
     for (const { jid } of bizGroups) {
       const newJid = jid.slice(BIZ_PREFIX.length);
-      // Delete any existing entry for the new JID first (avoid PK conflict)
       database.prepare('DELETE FROM registered_groups WHERE jid = ?').run(newJid);
       database.prepare('UPDATE registered_groups SET jid = ? WHERE jid = ?').run(newJid, jid);
     }
 
-    // 2. messages: strip biz: prefix from chat_jid
-    database.prepare(`UPDATE messages SET chat_jid = SUBSTR(chat_jid, ${BIZ_PREFIX.length + 1}) WHERE chat_jid LIKE 'biz:%'`).run();
-
-    // 3. chats: strip biz: prefix from jid
+    // 2. chats: strip biz: prefix from jid (update parent first)
     const bizChats = database
       .prepare(`SELECT jid FROM chats WHERE jid LIKE 'biz:%'`)
       .all() as Array<{ jid: string }>;
@@ -659,6 +659,9 @@ function migrateBizPrefix(database: Database.Database): void {
       database.prepare('DELETE FROM chats WHERE jid = ?').run(newJid);
       database.prepare('UPDATE chats SET jid = ? WHERE jid = ?').run(newJid, jid);
     }
+
+    // 3. messages: strip biz: prefix from chat_jid
+    database.prepare(`UPDATE messages SET chat_jid = SUBSTR(chat_jid, ${BIZ_PREFIX.length + 1}) WHERE chat_jid LIKE 'biz:%'`).run();
 
     // 4. scheduled_tasks: strip biz: prefix from chat_jid
     database.prepare(`UPDATE scheduled_tasks SET chat_jid = SUBSTR(chat_jid, ${BIZ_PREFIX.length + 1}) WHERE chat_jid LIKE 'biz:%'`).run();
@@ -685,5 +688,6 @@ function migrateBizPrefix(database: Database.Database): void {
   });
 
   migrate();
+  database.pragma('foreign_keys = ON');
   logger.info('biz: prefix migration complete');
 }
