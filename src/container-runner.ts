@@ -242,6 +242,15 @@ function buildVolumeMounts(
     });
   }
 
+  // Mount agent-runner source from host — recompiled on container startup.
+  // Allows code changes without rebuilding the Docker image.
+  const agentRunnerSrc = path.join(projectRoot, 'container', 'agent-runner', 'src');
+  mounts.push({
+    hostPath: agentRunnerSrc,
+    containerPath: '/app/src',
+    readonly: true,
+  });
+
   // Additional mounts validated against external allowlist (tamper-proof from containers)
   if (group.containerConfig?.additionalMounts) {
     const validatedMounts = validateAdditionalMounts(
