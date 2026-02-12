@@ -149,16 +149,22 @@ function buildVolumeMounts(
   const skillsSrc = path.join(process.cwd(), 'container', 'skills');
   const skillsDst = path.join(groupSessionsDir, 'skills');
   if (fs.existsSync(skillsSrc)) {
+    const copyDirRecursive = (src: string, dst: string) => {
+      fs.mkdirSync(dst, { recursive: true });
+      for (const entry of fs.readdirSync(src)) {
+        const srcPath = path.join(src, entry);
+        const dstPath = path.join(dst, entry);
+        if (fs.statSync(srcPath).isDirectory()) {
+          copyDirRecursive(srcPath, dstPath);
+        } else {
+          fs.copyFileSync(srcPath, dstPath);
+        }
+      }
+    };
     for (const skillDir of fs.readdirSync(skillsSrc)) {
       const srcDir = path.join(skillsSrc, skillDir);
       if (!fs.statSync(srcDir).isDirectory()) continue;
-      const dstDir = path.join(skillsDst, skillDir);
-      fs.mkdirSync(dstDir, { recursive: true });
-      for (const file of fs.readdirSync(srcDir)) {
-        const srcFile = path.join(srcDir, file);
-        const dstFile = path.join(dstDir, file);
-        fs.copyFileSync(srcFile, dstFile);
-      }
+      copyDirRecursive(srcDir, path.join(skillsDst, skillDir));
     }
   }
   // Sync host credentials for automatic OAuth token refresh
@@ -194,7 +200,7 @@ function buildVolumeMounts(
   const envFile = path.join(projectRoot, '.env');
   if (fs.existsSync(envFile)) {
     const envContent = fs.readFileSync(envFile, 'utf-8');
-    const allowedVars = ['ANTHROPIC_API_KEY', 'BRAVE_API_KEY', 'GH_TOKEN', 'NOTION_API_KEY', 'GOG_KEYRING_PASSWORD', 'GOG_ACCOUNT', 'HA_URL', 'HA_TOKEN', 'FRESHRSS_URL', 'FRESHRSS_API_KEY', 'CLAUDE_MEM_URL', 'EMAIL_ACCOUNTS', 'CALDAV_ACCOUNTS', 'CLAUDE_MODEL', 'NATIONAL_RAIL_TOKEN'];
+    const allowedVars = ['ANTHROPIC_API_KEY', 'BRAVE_API_KEY', 'GH_TOKEN', 'NOTION_API_KEY', 'GOG_KEYRING_PASSWORD', 'GOG_ACCOUNT', 'HA_URL', 'HA_TOKEN', 'FRESHRSS_URL', 'FRESHRSS_API_KEY', 'CLAUDE_MEM_URL', 'EMAIL_ACCOUNTS', 'CALDAV_ACCOUNTS', 'CLAUDE_MODEL', 'NATIONAL_RAIL_TOKEN', 'N8N_URL', 'N8N_API_KEY', 'NANOCLAW_WEBHOOK_URL', 'NANOCLAW_WEBHOOK_SECRET'];
     const filteredLines = envContent.split('\n').filter((line) => {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith('#')) return false;
