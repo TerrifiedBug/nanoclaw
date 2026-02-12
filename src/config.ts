@@ -57,4 +57,4 @@ export const TIMEZONE =
 
 // Webhook server for external event ingestion
 export const WEBHOOK_PORT = parseInt(process.env.WEBHOOK_PORT || '3457', 10);
-export const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || '';
+export const WEBHOOK_SECRET = process.env.NANOCLAW_WEBHOOK_SECRET || '';

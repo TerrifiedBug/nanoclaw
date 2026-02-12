@@ -23,7 +23,7 @@ This skill connects NanoClaw to an n8n instance so agents can create and manage 
 ```bash
 grep "^N8N_URL=" .env 2>/dev/null && echo "N8N_CONFIGURED" || echo "N8N_NEEDS_SETUP"
 grep '"n8n"' .mcp.json 2>/dev/null && echo "MCP_CONFIGURED" || echo "MCP_NEEDS_SETUP"
-grep "^WEBHOOK_SECRET=" .env 2>/dev/null && echo "WEBHOOK_AVAILABLE" || echo "NO_WEBHOOK"
+grep "^NANOCLAW_WEBHOOK_SECRET=" .env 2>/dev/null && echo "WEBHOOK_AVAILABLE" || echo "NO_WEBHOOK"
 grep "^NANOCLAW_WEBHOOK_URL=" .env 2>/dev/null && echo "WEBHOOK_URL_CONFIGURED" || echo "WEBHOOK_URL_NEEDS_SETUP"
 ```
 
@@ -51,7 +51,7 @@ Tell the user:
 
 **Skip this step if the webhook skill isn't set up or the user doesn't need n8n→NanoClaw callbacks yet.**
 
-If `WEBHOOK_SECRET` exists in `.env`, offer to configure the callback URL so n8n workflows can trigger agent turns.
+If `NANOCLAW_WEBHOOK_SECRET` exists in `.env`, offer to configure the callback URL so n8n workflows can trigger agent turns.
 
 The agent needs to know the NanoClaw webhook endpoint so it can configure n8n workflows to call back.
 
@@ -62,7 +62,7 @@ Determine the webhook URL that n8n can reach:
 ```bash
 # Get the current webhook port
 grep "^WEBHOOK_PORT=" .env 2>/dev/null || echo "WEBHOOK_PORT=3457 (default)"
-grep "^WEBHOOK_SECRET=" .env 2>/dev/null && echo "SECRET_EXISTS" || echo "NO_SECRET"
+grep "^NANOCLAW_WEBHOOK_SECRET=" .env 2>/dev/null && echo "SECRET_EXISTS" || echo "NO_SECRET"
 ```
 
 Ask the user: "What URL can your n8n instance use to reach NanoClaw's webhook?" and suggest the likely value based on the network setup.
@@ -83,12 +83,8 @@ echo 'N8N_API_KEY=THE_API_KEY_HERE' >> .env
 
 ```bash
 sed -i '/^NANOCLAW_WEBHOOK_URL=/d' .env
-sed -i '/^NANOCLAW_WEBHOOK_SECRET=/d' .env
 
-# Read WEBHOOK_SECRET from .env and expose it for containers
-WEBHOOK_SECRET=$(grep "^WEBHOOK_SECRET=" .env | cut -d'=' -f2)
 echo 'NANOCLAW_WEBHOOK_URL=THE_WEBHOOK_URL_HERE' >> .env
-echo "NANOCLAW_WEBHOOK_SECRET=$WEBHOOK_SECRET" >> .env
 ```
 
 ## Step 5: Add to Container Runner Allowlist
@@ -192,7 +188,6 @@ Tell the user:
 sed -i '/^N8N_URL=/d' .env
 sed -i '/^N8N_API_KEY=/d' .env
 sed -i '/^NANOCLAW_WEBHOOK_URL=/d' .env
-sed -i '/^NANOCLAW_WEBHOOK_SECRET=/d' .env
 ```
 
 2. Remove n8n from `.mcp.json`

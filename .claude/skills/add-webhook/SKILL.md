@@ -19,7 +19,7 @@ This skill adds an HTTP webhook endpoint to NanoClaw. External services POST eve
 ## Step 1: Check Current State
 
 ```bash
-grep "WEBHOOK_SECRET" .env 2>/dev/null && echo "SECRET_EXISTS" || echo "NEED_SECRET"
+grep "NANOCLAW_WEBHOOK_SECRET" .env 2>/dev/null && echo "SECRET_EXISTS" || echo "NEED_SECRET"
 [ -f src/webhook-server.ts ] && echo "SERVER_EXISTS" || echo "NEED_SERVER"
 ```
 
@@ -27,14 +27,14 @@ If both exist, skip to Step 6 (Test).
 
 ## Step 2: Add Config Constants
 
-Add `WEBHOOK_PORT` and `WEBHOOK_SECRET` to `src/config.ts`.
+Add `WEBHOOK_PORT` and `WEBHOOK_SECRET` constants to `src/config.ts` (the latter reads from the `NANOCLAW_WEBHOOK_SECRET` env var).
 
 Append these lines **after** the `TIMEZONE` export at the end of the file:
 
 ```typescript
 // Webhook server for external event ingestion
 export const WEBHOOK_PORT = parseInt(process.env.WEBHOOK_PORT || '3457', 10);
-export const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || '';
+export const WEBHOOK_SECRET = process.env.NANOCLAW_WEBHOOK_SECRET || '';
 ```
 
 ## Step 3: Add `storeWebhookMessage()` to `src/db.ts`
@@ -199,7 +199,7 @@ Add this block in the `main()` function, **after** the business DM auto-registra
       insertMessage: storeWebhookMessage,
     });
   } else {
-    logger.debug('Webhook server disabled (no WEBHOOK_SECRET set)');
+    logger.debug('Webhook server disabled (no NANOCLAW_WEBHOOK_SECRET in env)');
   }
 ```
 
@@ -222,8 +222,8 @@ Generate a secure random token and add it to `.env`:
 ```bash
 # Generate a 32-byte random token
 TOKEN=$(openssl rand -hex 32)
-echo "WEBHOOK_SECRET=${TOKEN}" >> .env
-echo "Generated WEBHOOK_SECRET: ${TOKEN}"
+echo "NANOCLAW_WEBHOOK_SECRET=${TOKEN}" >> .env
+echo "Generated NANOCLAW_WEBHOOK_SECRET: ${TOKEN}"
 ```
 
 Optionally set a custom port (default is 3457):
@@ -231,13 +231,7 @@ Optionally set a custom port (default is 3457):
 echo "WEBHOOK_PORT=3457" >> .env
 ```
 
-**Security:** Verify that `WEBHOOK_SECRET` is NOT in the container env allowlist in `src/container-runner.ts`. The secret must never leak into agent containers. Check with:
-
-```bash
-grep "WEBHOOK_SECRET" src/container-runner.ts
-```
-
-This should return no matches. If it does, remove it from the `allowedVars` array.
+**Note:** `NANOCLAW_WEBHOOK_SECRET` IS in the container env allowlist — agents need it to configure external services (n8n workflows, etc.) to call back to the webhook endpoint.
 
 ## Step 7: Build and Restart
 
@@ -260,7 +254,7 @@ launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist && launchctl load ~/L
 Read the secret from `.env`:
 
 ```bash
-SECRET=$(grep "^WEBHOOK_SECRET=" .env | cut -d= -f2)
+SECRET=$(grep "^NANOCLAW_WEBHOOK_SECRET=" .env | cut -d= -f2)
 ```
 
 ### Test auth rejection (should return 401):
@@ -319,7 +313,7 @@ rest_command:
     url: "http://NANOCLAW_IP:3457/webhook"
     method: POST
     headers:
-      Authorization: "Bearer YOUR_WEBHOOK_SECRET"
+      Authorization: "Bearer YOUR_NANOCLAW_WEBHOOK_SECRET"
       Content-Type: "application/json"
     payload: '{"source": "{{ source }}", "text": "{{ text }}"}'
 ```
@@ -328,7 +322,7 @@ rest_command:
 
 ```bash
 curl -X POST http://NANOCLAW_IP:3457/webhook \
-  -H "Authorization: Bearer YOUR_WEBHOOK_SECRET" \
+  -H "Authorization: Bearer YOUR_NANOCLAW_WEBHOOK_SECRET" \
   -H "Content-Type: application/json" \
   -d '{"source": "uptime-kuma", "text": "ALERT: website.com is DOWN. Status: 503. Downtime: 2 minutes."}'
 ```
@@ -337,14 +331,14 @@ curl -X POST http://NANOCLAW_IP:3457/webhook \
 
 ```bash
 curl -X POST http://NANOCLAW_IP:3457/webhook \
-  -H "Authorization: Bearer YOUR_WEBHOOK_SECRET" \
+  -H "Authorization: Bearer YOUR_NANOCLAW_WEBHOOK_SECRET" \
   -H "Content-Type: application/json" \
   -d '{"source": "proxmox", "text": "Backup completed for VM 100 (homelab). Size: 12GB. Duration: 8m 32s."}'
 ```
 
 ## How It Works
 
-- Webhook server starts only if `WEBHOOK_SECRET` is set in `.env` (safe default = off)
+- Webhook server starts only if `NANOCLAW_WEBHOOK_SECRET` is set in `.env` (safe default = off)
 - `POST /webhook` validates Bearer token, parses JSON body `{ source, text }`
 - Generates a unique `wh-*` message ID and calls `storeWebhookMessage()`
 - Message is inserted into SQLite `messages` table with `sender_name` set to `source`
@@ -355,13 +349,13 @@ curl -X POST http://NANOCLAW_IP:3457/webhook \
 
 ## Security
 
-- **Auth:** Every request requires `Authorization: Bearer <WEBHOOK_SECRET>`
-- **Isolation:** `WEBHOOK_SECRET` is NOT in the container env allowlist — agents can't read it
+- **Auth:** Every request requires `Authorization: Bearer <NANOCLAW_WEBHOOK_SECRET>`
+- **Isolation:** `NANOCLAW_WEBHOOK_SECRET` is in the container env allowlist so agents can configure external callbacks (n8n, etc.), but the webhook server itself runs on the host — agents can't start or stop it
 - **Payload limit:** 64KB max body size prevents memory exhaustion
 - **SQL safety:** All inserts use parameterized queries
 - **XSS safety:** Message content passes through `escapeXml()` in `formatMessages()`
 - **Network:** Designed for VPN/mesh networks (Tailscale, Pangolin) — not internet-facing
-- **Default off:** Server doesn't start without `WEBHOOK_SECRET` configured
+- **Default off:** Server doesn't start without `NANOCLAW_WEBHOOK_SECRET` configured
 
 ## Troubleshooting
 
@@ -371,9 +365,9 @@ curl -X POST http://NANOCLAW_IP:3457/webhook \
 grep -i "webhook" logs/nanoclaw.log | tail -10
 ```
 
-Check that `WEBHOOK_SECRET` is set:
+Check that `NANOCLAW_WEBHOOK_SECRET` is set:
 ```bash
-grep "^WEBHOOK_SECRET=" .env
+grep "^NANOCLAW_WEBHOOK_SECRET=" .env
 ```
 
 ### Port already in use
@@ -422,7 +416,7 @@ rm src/webhook-server.ts
 
 5. Remove env vars:
 ```bash
-sed -i '/^WEBHOOK_SECRET=/d' .env
+sed -i '/^NANOCLAW_WEBHOOK_SECRET=/d' .env
 sed -i '/^WEBHOOK_PORT=/d' .env
 ```
 
