@@ -62,6 +62,8 @@ server.tool(
   'schedule_task',
   `Schedule a recurring or one-time task. The task will run as a full agent with access to all tools.
 
+IMPORTANT: When MODIFYING an existing task, you MUST cancel the old task first using cancel_task, then create the new one. Otherwise you'll end up with duplicate tasks. Always call list_tasks first to find the old task ID, then cancel_task, then schedule_task.
+
 CONTEXT MODE - Choose based on task type:
 \u2022 "group": Task runs in the group's conversation context, with access to chat history. Use for tasks that need context about ongoing discussions, user preferences, or recent interactions.
 \u2022 "isolated": Task runs in a fresh session with no conversation history. Use for independent tasks that don't need prior context. When using isolated mode, include all necessary context in the prompt itself.
