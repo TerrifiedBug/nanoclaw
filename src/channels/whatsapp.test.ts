@@ -6,6 +6,7 @@ import { EventEmitter } from 'events';
 // Mock config
 vi.mock('../config.js', () => ({
   STORE_DIR: '/tmp/nanoclaw-test-store',
+  BUSINESS_AUTH_DIR: '/tmp/nanoclaw-test-store/auth-business',
 }));
 
 // Mock logger
@@ -58,6 +59,7 @@ function createFakeSocket() {
     },
     sendMessage: vi.fn().mockResolvedValue(undefined),
     sendPresenceUpdate: vi.fn().mockResolvedValue(undefined),
+    readMessages: vi.fn().mockResolvedValue(undefined),
     groupFetchAllParticipating: vi.fn().mockResolvedValue({}),
     end: vi.fn(),
     // Expose the event emitter for triggering events in tests
