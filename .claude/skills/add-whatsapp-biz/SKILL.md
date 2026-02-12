@@ -267,9 +267,10 @@ To revert to personal WhatsApp DM as main channel:
 sqlite3 store/messages.db "DELETE FROM registered_groups WHERE jid LIKE 'biz:%'"
 ```
 
-2. Re-register personal DM as main (replace with your JID):
+2. Re-register personal DM as main (replace JID and trigger with configured values):
 ```bash
-sqlite3 store/messages.db "INSERT INTO registered_groups (jid, name, folder, trigger_pattern, added_at, requires_trigger) VALUES ('YOUR_NUMBER@s.whatsapp.net', 'main', 'main', '@TARS', datetime('now'), 0)"
+source .env
+sqlite3 store/messages.db "INSERT INTO registered_groups (jid, name, folder, trigger_pattern, added_at, requires_trigger) VALUES ('YOUR_NUMBER@s.whatsapp.net', 'main', 'main', '@${ASSISTANT_NAME}', datetime('now'), 0)"
 ```
 
 3. Remove auth and env var:

@@ -102,7 +102,7 @@ describe('formatMessages', () => {
 // --- TRIGGER_PATTERN ---
 
 describe('TRIGGER_PATTERN', () => {
-  const name = ASSISTANT_NAME; // e.g. 'TARS' or 'Andy'
+  const name = ASSISTANT_NAME;
 
   it(`matches @${ASSISTANT_NAME} at start of message`, () => {
     expect(TRIGGER_PATTERN.test(`@${name} hello`)).toBe(true);

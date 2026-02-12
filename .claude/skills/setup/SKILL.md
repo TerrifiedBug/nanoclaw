@@ -291,15 +291,20 @@ Wait for the script to output "Successfully authenticated" then continue.
 
 This step configures three things at once: the trigger word, the main channel type, and the main channel selection.
 
-### 6a. Ask for trigger word
+### 6a. Ask for assistant name
 
 Ask the user:
-> What trigger word do you want to use? (default: `Andy`)
+> What do you want to name your assistant? (default: `Andy`)
 >
-> In group chats, messages starting with `@TriggerWord` will be sent to Claude.
+> This name is used as the trigger word in group chats (`@Name`) and as the prefix on outgoing messages (`Name: ...`).
 > In your main channel (and optionally solo chats), no prefix is needed — all messages are processed.
 
-Store their choice for use in the steps below.
+Store their choice for use in the steps below. Then write it to `.env`:
+
+```bash
+sed -i '/^ASSISTANT_NAME=/d' .env 2>/dev/null
+echo 'ASSISTANT_NAME=CHOSEN_NAME_HERE' >> .env
+```
 
 ### 6b. Explain security model and ask about main channel type
 
