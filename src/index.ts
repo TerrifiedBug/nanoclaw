@@ -9,6 +9,7 @@ import {
   MAIN_GROUP_FOLDER,
   POLL_INTERVAL,
   TRIGGER_PATTERN,
+  WEBHOOK_SECRET,
 } from './config.js';
 import { WhatsAppChannel } from './channels/whatsapp.js';
 import {
@@ -31,12 +32,14 @@ import {
   setSession,
   storeChatMetadata,
   storeMessage,
+  storeWebhookMessage,
 } from './db.js';
 import { GroupQueue } from './group-queue.js';
 import { startIpcWatcher } from './ipc.js';
 import { formatMessages, formatOutbound } from './router.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { NewMessage, RegisteredGroup } from './types.js';
+import { startWebhookServer } from './webhook-server.js';
 import { logger } from './logger.js';
 
 // Re-export for backwards compatibility during refactor
@@ -391,59 +394,29 @@ function recoverPendingMessages(): void {
   }
 }
 
-function ensureContainerSystemRunning(): void {
+function ensureDockerRunning(): void {
   try {
-    execSync('container system status', { stdio: 'pipe' });
-    logger.debug('Apple Container system already running');
-  } catch {
-    logger.info('Starting Apple Container system...');
-    try {
-      execSync('container system start', { stdio: 'pipe', timeout: 30000 });
-      logger.info('Apple Container system started');
-    } catch (err) {
-      logger.error({ err }, 'Failed to start Apple Container system');
-      console.error(
-        '\n╔════════════════════════════════════════════════════════════════╗',
-      );
-      console.error(
-        '║  FATAL: Apple Container system failed to start                 ║',
-      );
-      console.error(
-        '║                                                                ║',
-      );
-      console.error(
-        '║  Agents cannot run without Apple Container. To fix:           ║',
-      );
-      console.error(
-        '║  1. Install from: https://github.com/apple/container/releases ║',
-      );
-      console.error(
-        '║  2. Run: container system start                               ║',
-      );
-      console.error(
-        '║  3. Restart NanoClaw                                          ║',
-      );
-      console.error(
-        '╚════════════════════════════════════════════════════════════════╝\n',
-      );
-      throw new Error('Apple Container system is required but failed to start');
-    }
+    execSync('docker info', { stdio: 'pipe', timeout: 10000 });
+    logger.debug('Docker daemon running');
+  } catch (err) {
+    logger.error({ err }, 'Docker daemon not available');
+    throw new Error('Docker is required but not running. Start Docker and try again.');
   }
 
   // Kill and clean up orphaned NanoClaw containers from previous runs
   try {
-    const output = execSync('container ls --format json', {
+    const output = execSync('docker ps --format "{{.Names}}" --filter name=nanoclaw-', {
       stdio: ['pipe', 'pipe', 'pipe'],
       encoding: 'utf-8',
     });
-    const containers: { status: string; configuration: { id: string } }[] = JSON.parse(output || '[]');
-    const orphans = containers
-      .filter((c) => c.status === 'running' && c.configuration.id.startsWith('nanoclaw-'))
-      .map((c) => c.configuration.id);
+    const orphans = output.trim().split('\n').filter(Boolean);
     for (const name of orphans) {
       try {
-        execSync(`container stop ${name}`, { stdio: 'pipe' });
+        execSync(`docker stop ${name}`, { stdio: 'pipe', timeout: 15000 });
       } catch { /* already stopped */ }
+      try {
+        execSync(`docker rm ${name}`, { stdio: 'pipe', timeout: 5000 });
+      } catch { /* already removed */ }
     }
     if (orphans.length > 0) {
       logger.info({ count: orphans.length, names: orphans }, 'Stopped orphaned containers');
@@ -454,7 +427,7 @@ function ensureContainerSystemRunning(): void {
 }
 
 async function main(): Promise<void> {
-  ensureContainerSystemRunning();
+  ensureDockerRunning();
   initDatabase();
   logger.info('Database initialized');
   loadState();
@@ -489,6 +462,7 @@ async function main(): Promise<void> {
       const text = formatOutbound(whatsapp, rawText);
       if (text) await whatsapp.sendMessage(jid, text);
     },
+    assistantName: ASSISTANT_NAME,
   });
   startIpcWatcher({
     sendMessage: (jid, text) => whatsapp.sendMessage(jid, text),
@@ -498,6 +472,19 @@ async function main(): Promise<void> {
     getAvailableGroups,
     writeGroupsSnapshot: (gf, im, ag, rj) => writeGroupsSnapshot(gf, im, ag, rj),
   });
+  // Start webhook server for external event ingestion (HA, uptime monitors, etc.)
+  if (WEBHOOK_SECRET) {
+    startWebhookServer({
+      getMainChannelJid: () => {
+        const mainEntry = Object.entries(registeredGroups).find(
+          ([, g]) => g.folder === MAIN_GROUP_FOLDER,
+        );
+        return mainEntry ? mainEntry[0] : null;
+      },
+      insertMessage: storeWebhookMessage,
+    });
+  }
+
   queue.setProcessMessagesFn(processGroupMessages);
   recoverPendingMessages();
   startMessageLoop();
