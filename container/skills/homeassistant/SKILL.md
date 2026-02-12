@@ -6,7 +6,7 @@ allowed-tools: mcp__home-assistant(*), Bash(curl:*)
 
 # Home Assistant
 
-Control smart home devices via Home Assistant's MCP Server integration.
+Control smart home devices via Home Assistant's MCP Server integration. If MCP tools and `$HA_URL`/`$HA_TOKEN` are not configured, tell the user to run `/add-homeassistant` on the host to set it up.
 
 ## How It Works
 

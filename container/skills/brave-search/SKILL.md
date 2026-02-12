@@ -6,7 +6,7 @@ allowed-tools: Bash(curl:*)
 
 # Web Search with Brave
 
-Search the web for any topic using Brave Search API:
+Search the web for any topic using Brave Search API. Requires `$BRAVE_API_KEY` environment variable. If not configured, tell the user to run `/add-brave-search` on the host to set it up.
 
 ```bash
 # Basic search

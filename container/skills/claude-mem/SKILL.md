@@ -6,7 +6,7 @@ allowed-tools: Bash(curl:*)
 
 # Persistent Memory
 
-Your conversations are automatically captured into a persistent memory database that survives across sessions. Use this skill to **search** for past context when needed.
+Your conversations are automatically captured into a persistent memory database that survives across sessions. Use this skill to **search** for past context when needed. Requires `$CLAUDE_MEM_URL` environment variable. If not configured, run `/add-claude-mem` on the host to set it up.
 
 For standing rules and personal preferences, use `MEMORY.md` in your workspace instead — it's auto-loaded every session.
 

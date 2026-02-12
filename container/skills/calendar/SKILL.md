@@ -6,6 +6,8 @@ allowed-tools: Bash(gog:*, cal:*)
 
 # Calendar Access
 
+Run `/add-cal` on the host to configure calendar providers.
+
 **IMPORTANT: Two separate tools exist. Check which are configured and use all available ones.**
 
 - **`gog`** — Google Calendar (read/write via API) — available if `$GOG_KEYRING_PASSWORD` is set
