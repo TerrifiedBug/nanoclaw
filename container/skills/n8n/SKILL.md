@@ -8,16 +8,19 @@ allowed-tools: mcp__n8n(*), Bash(curl:*)
 
 Create and manage automated workflows on n8n. n8n does the frequent polling (free, zero tokens) and only triggers you via webhook when something actually needs attention.
 
-## When to Use n8n vs Scheduled Tasks
+## Choosing the Right Tool
 
-| Use n8n | Use scheduled task |
-|---|---|
-| Frequent checks (every few minutes) | Daily/weekly digests that always produce output |
-| "Alert me if X happens" | "Give me a summary every morning" |
-| Conditional triggers (only act if threshold met) | One-off questions |
-| Event-driven monitoring | Tasks that aggregate multiple sources |
+| Scenario | Use | Why |
+|---|---|---|
+| Alert based on Home Assistant state | **HA automation** → webhook | Event-driven, instant, no polling needed |
+| Alert based on external source (email, stock, API) | **n8n workflow** → webhook | HA can't monitor these; n8n polls for free |
+| Daily/weekly digest combining multiple sources | **Scheduled task** | Always produces output, aggregates data |
+| One-off question or on-demand lookup | **Direct tool call** | No automation needed |
 
-**Rule of thumb:** If most polling cycles would result in "nothing to report", use n8n. If every run produces useful output, use a scheduled task.
+**Decision order:**
+1. If the data source is **Home Assistant** → use an HA automation (instant, native)
+2. If the data source is **external** and checks are frequent → use n8n (free polling, zero tokens)
+3. If the task **always produces output** (digests, summaries) → use a scheduled task
 
 ## How It Works
 

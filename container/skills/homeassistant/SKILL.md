@@ -49,8 +49,26 @@ curl -s -X POST "$HA_URL/api/services/{domain}/{service}" \
 - `media_player.*` -- TVs, speakers
 - `sensor.*` -- Temperature, humidity, etc.
 
+## Event-Driven Alerts
+
+For "alert me when X happens" based on HA state changes, **create an HA automation** rather than polling with n8n or scheduled tasks. HA automations are instant (event-driven) and don't waste tokens or polling cycles.
+
+Use MCP tools or the REST API to create an automation that calls the NanoClaw webhook:
+
+```bash
+curl -s -X POST "$HA_URL/api/services/automation/create" \
+  -H "Authorization: Bearer $HA_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ ... }'
+```
+
+The webhook payload should be: `{"source": "ha-{description}", "text": "What happened and relevant data"}`
+- **URL**: `$NANOCLAW_WEBHOOK_URL`
+- **Headers**: `Authorization: Bearer $NANOCLAW_WEBHOOK_SECRET`
+
 ## Notes
 
 - Only entities exposed in HA's Voice assistants > Expose settings are accessible
 - To request access to more entities, tell the user to expose them in HA settings
 - MCP tools are the preferred method — only use curl as a fallback
+- For HA-based alerts, prefer HA automations over n8n polling — they're instant and native
