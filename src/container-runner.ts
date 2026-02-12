@@ -74,6 +74,17 @@ function buildVolumeMounts(
     });
   }
 
+  // MCP server config — mounted at /workspace/.mcp.json so Claude Code's
+  // walk-up from /workspace/group discovers it (enables HA MCP, etc.)
+  const mcpJsonFile = path.join(projectRoot, '.mcp.json');
+  if (fs.existsSync(mcpJsonFile)) {
+    mounts.push({
+      hostPath: mcpJsonFile,
+      containerPath: '/workspace/.mcp.json',
+      readonly: true,
+    });
+  }
+
   if (isMain) {
     // Main gets the entire project root mounted
     mounts.push({

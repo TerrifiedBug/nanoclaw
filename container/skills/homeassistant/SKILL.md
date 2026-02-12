@@ -1,70 +1,41 @@
 ---
 name: homeassistant
-description: Control Home Assistant - smart plugs, lights, scenes, automations.
-allowed-tools: Bash(curl:*)
+description: Control Home Assistant - smart plugs, lights, scenes, automations, sensors, climate, media players. Uses native MCP tools for device control and state queries.
+allowed-tools: mcp__home-assistant(*), Bash(curl:*)
 ---
 
 # Home Assistant
 
-Control smart home devices via Home Assistant API.
+Control smart home devices via Home Assistant's MCP Server integration.
 
-## Setup
+## How It Works
 
-Set environment variables in `.env`:
-- `HA_URL`: Your Home Assistant URL (e.g., `http://192.168.1.100:8123`)
-- `HA_TOKEN`: Long-lived access token (create in HA > Profile > Long-Lived Access Tokens)
+Home Assistant is connected as an MCP server. You have native MCP tools available — use them directly to control devices, query states, and manage automations. Look for tools prefixed with `mcp__home-assistant`.
 
-## Quick Commands
+## Usage
 
-### List entities by domain
+Use the MCP tools naturally. Examples of what you can do:
+- Turn lights on/off, set brightness and color
+- Toggle switches and smart plugs
+- Check sensor readings (temperature, humidity, motion, etc.)
+- Trigger scenes and automations
+- Query device states
+- Control climate devices (thermostats)
+- Control media players
+
+## Fallback: REST API
+
+If MCP tools are unavailable, fall back to the REST API with curl:
+
 ```bash
-curl -s "$HA_URL/api/states" -H "Authorization: Bearer $HA_TOKEN" | \
-  jq -r '.[] | select(.entity_id | startswith("switch.")) | .entity_id'
-```
+# Get entity state
+curl -s "$HA_URL/api/states/{entity_id}" -H "Authorization: Bearer $HA_TOKEN"
 
-### Turn on/off
-```bash
-# Turn on
-curl -s -X POST "$HA_URL/api/services/switch/turn_on" \
-  -H "Authorization: Bearer $HA_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"entity_id": "switch.office_lamp"}'
-
-# Turn off
-curl -s -X POST "$HA_URL/api/services/switch/turn_off" \
-  -H "Authorization: Bearer $HA_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"entity_id": "switch.office_lamp"}'
-```
-
-### Control lights
-```bash
-# Turn on with brightness
-curl -s -X POST "$HA_URL/api/services/light/turn_on" \
-  -H "Authorization: Bearer $HA_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"entity_id": "light.living_room", "brightness_pct": 80}'
-```
-
-### Trigger scene
-```bash
-curl -s -X POST "$HA_URL/api/services/scene/turn_on" \
-  -H "Authorization: Bearer $HA_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"entity_id": "scene.movie_time"}'
-```
-
-### Call any service
-```bash
+# Call a service
 curl -s -X POST "$HA_URL/api/services/{domain}/{service}" \
   -H "Authorization: Bearer $HA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"entity_id": "...", ...}'
-```
-
-### Get entity state
-```bash
-curl -s "$HA_URL/api/states/{entity_id}" -H "Authorization: Bearer $HA_TOKEN"
 ```
 
 ## Entity Domains
@@ -80,6 +51,6 @@ curl -s "$HA_URL/api/states/{entity_id}" -H "Authorization: Bearer $HA_TOKEN"
 
 ## Notes
 
-- API returns JSON by default
-- Long-lived tokens don't expire -- store securely
-- Test entity IDs with the list command first
+- Only entities exposed in HA's Voice assistants > Expose settings are accessible
+- To request access to more entities, tell the user to expose them in HA settings
+- MCP tools are the preferred method — only use curl as a fallback
