@@ -31,3 +31,6 @@ socket:*
 .vscode/
 
 agents-sdk-docs
+
+# Plans
+docs/plans/
