@@ -3,7 +3,6 @@ import fs from 'fs';
 import path from 'path';
 
 import { DATA_DIR, STORE_DIR } from './config.js';
-import { logger } from './logger.js';
 import { NewMessage, RegisteredGroup, ScheduledTask, TaskRunLog } from './types.js';
 
 let db: Database.Database;
@@ -95,11 +94,6 @@ export function initDatabase(): void {
   // Migrate from JSON files if they exist
   migrateJsonState();
 
-  // Migrate biz: prefix from legacy dual-socket setup.
-  // The fork previously ran personal + business WhatsApp simultaneously,
-  // namespacing business JIDs with "biz:" prefix. Now we use a single
-  // connection, so strip the prefix from all tables.
-  migrateBizPrefix(db);
 }
 
 /** @internal - for tests only. Creates a fresh in-memory database. */
@@ -616,78 +610,4 @@ function migrateJsonState(): void {
       setRegisteredGroup(jid, group);
     }
   }
-}
-
-/**
- * One-time migration: strip "biz:" prefix from all JIDs.
- * The fork previously ran personal + business WhatsApp simultaneously,
- * using "biz:" to namespace business JIDs. Now we use a single connection.
- */
-function migrateBizPrefix(database: Database.Database): void {
-  const BIZ_PREFIX = 'biz:';
-
-  // Check if any biz: JIDs exist in registered_groups
-  const bizGroups = database
-    .prepare(`SELECT jid FROM registered_groups WHERE jid LIKE 'biz:%'`)
-    .all() as Array<{ jid: string }>;
-
-  if (bizGroups.length === 0) return; // Nothing to migrate
-
-  logger.info(
-    { count: bizGroups.length },
-    'Migrating biz: prefix from legacy dual-socket setup',
-  );
-
-  // Disable FK checks during migration — we're updating both sides of the
-  // messages.chat_jid → chats.jid relationship and the order would violate constraints.
-  database.pragma('foreign_keys = OFF');
-
-  const migrate = database.transaction(() => {
-    // 1. registered_groups: strip biz: prefix from JID
-    for (const { jid } of bizGroups) {
-      const newJid = jid.slice(BIZ_PREFIX.length);
-      database.prepare('DELETE FROM registered_groups WHERE jid = ?').run(newJid);
-      database.prepare('UPDATE registered_groups SET jid = ? WHERE jid = ?').run(newJid, jid);
-    }
-
-    // 2. chats: strip biz: prefix from jid (update parent first)
-    const bizChats = database
-      .prepare(`SELECT jid FROM chats WHERE jid LIKE 'biz:%'`)
-      .all() as Array<{ jid: string }>;
-    for (const { jid } of bizChats) {
-      const newJid = jid.slice(BIZ_PREFIX.length);
-      database.prepare('DELETE FROM chats WHERE jid = ?').run(newJid);
-      database.prepare('UPDATE chats SET jid = ? WHERE jid = ?').run(newJid, jid);
-    }
-
-    // 3. messages: strip biz: prefix from chat_jid
-    database.prepare(`UPDATE messages SET chat_jid = SUBSTR(chat_jid, ${BIZ_PREFIX.length + 1}) WHERE chat_jid LIKE 'biz:%'`).run();
-
-    // 4. scheduled_tasks: strip biz: prefix from chat_jid
-    database.prepare(`UPDATE scheduled_tasks SET chat_jid = SUBSTR(chat_jid, ${BIZ_PREFIX.length + 1}) WHERE chat_jid LIKE 'biz:%'`).run();
-
-    // 5. router_state: strip biz: prefix from last_agent_timestamp JSON keys
-    const agentTs = database
-      .prepare(`SELECT value FROM router_state WHERE key = 'last_agent_timestamp'`)
-      .get() as { value: string } | undefined;
-    if (agentTs?.value) {
-      try {
-        const parsed = JSON.parse(agentTs.value) as Record<string, string>;
-        const migrated: Record<string, string> = {};
-        for (const [key, val] of Object.entries(parsed)) {
-          const newKey = key.startsWith(BIZ_PREFIX) ? key.slice(BIZ_PREFIX.length) : key;
-          migrated[newKey] = val;
-        }
-        database
-          .prepare(`UPDATE router_state SET value = ? WHERE key = 'last_agent_timestamp'`)
-          .run(JSON.stringify(migrated));
-      } catch { /* non-fatal */ }
-    }
-
-    // 6. sessions: no biz: prefix used there (keyed by folder, not JID)
-  });
-
-  migrate();
-  database.pragma('foreign_keys = ON');
-  logger.info('biz: prefix migration complete');
 }
