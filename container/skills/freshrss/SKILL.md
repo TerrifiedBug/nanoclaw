@@ -10,6 +10,7 @@ Access the user's self-hosted FreshRSS instance via the Google Reader API.
 
 **Environment variables:**
 - `FRESHRSS_URL` — Base URL of the FreshRSS instance (no trailing slash)
+- `FRESHRSS_USER` — FreshRSS username (for GReader API auth)
 - `FRESHRSS_API_KEY` — API password (set in FreshRSS > Settings > Profile > API Management)
 
 ## Authentication
@@ -19,7 +20,7 @@ FreshRSS uses the GReader API. First obtain an auth token, then use it for all r
 ```bash
 # Get auth token (use the API password, not the web login password)
 AUTH=$(curl -s "$FRESHRSS_URL/api/greader.php/accounts/ClientLogin" \
-  -d "Email=admin&Passwd=$FRESHRSS_API_KEY" | grep -oP 'Auth=\K.*')
+  -d "Email=$FRESHRSS_USER&Passwd=$FRESHRSS_API_KEY" | grep -oP 'Auth=\K.*')
 
 echo "Auth token: $AUTH"
 ```
