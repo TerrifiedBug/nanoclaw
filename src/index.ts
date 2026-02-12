@@ -4,11 +4,11 @@ import path from 'path';
 
 import {
   ASSISTANT_NAME,
+  createTriggerPattern,
   DATA_DIR,
   IDLE_TIMEOUT,
   MAIN_GROUP_FOLDER,
   POLL_INTERVAL,
-  TRIGGER_PATTERN,
   WEBHOOK_SECRET,
 } from './config.js';
 import { WhatsAppChannel } from './channels/whatsapp.js';
@@ -50,6 +50,11 @@ let sessions: Record<string, string> = {};
 let registeredGroups: Record<string, RegisteredGroup> = {};
 let lastAgentTimestamp: Record<string, string> = {};
 let messageLoopRunning = false;
+
+// Track processed message IDs to deduplicate when using >= timestamp comparison.
+// Cleared when the timestamp advances past the tracked window.
+const processedIds = new Set<string>();
+let processedIdsTimestamp = '';
 
 let whatsapp: WhatsAppChannel;
 const queue = new GroupQueue();
@@ -137,8 +142,9 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   // For non-main groups, check if trigger is required and present
   if (!isMainGroup && group.requiresTrigger !== false) {
+    const pattern = createTriggerPattern(group.trigger);
     const hasTrigger = missedMessages.some((m) =>
-      TRIGGER_PATTERN.test(m.content.trim()),
+      pattern.test(m.content.trim()),
     );
     if (!hasTrigger) return true;
   }
@@ -168,7 +174,23 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     }, IDLE_TIMEOUT);
   };
 
-  await whatsapp.setTyping(chatJid, true);
+  // Heartbeat typing: only show "typing" when agent is producing output
+  let typingActive = false;
+  let typingTimer: ReturnType<typeof setTimeout> | null = null;
+  const TYPING_PAUSE_MS = 5000;
+
+  const pulseTyping = async () => {
+    if (!typingActive) {
+      typingActive = true;
+      await whatsapp.setTyping(chatJid, true);
+    }
+    if (typingTimer) clearTimeout(typingTimer);
+    typingTimer = setTimeout(async () => {
+      typingActive = false;
+      await whatsapp.setTyping(chatJid, false);
+    }, TYPING_PAUSE_MS);
+  };
+
   let hadError = false;
   let outputSentToUser = false;
 
@@ -180,6 +202,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
       logger.info({ group: group.name }, `Agent output: ${raw.slice(0, 200)}`);
       if (text) {
+        await pulseTyping();
         await whatsapp.sendMessage(chatJid, `${ASSISTANT_NAME}: ${text}`);
         outputSentToUser = true;
       }
@@ -192,7 +215,8 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     }
   });
 
-  await whatsapp.setTyping(chatJid, false);
+  if (typingTimer) clearTimeout(typingTimer);
+  if (typingActive) await whatsapp.setTyping(chatJid, false);
   if (idleTimer) clearTimeout(idleTimer);
 
   if (output === 'error' || hadError) {
@@ -234,6 +258,7 @@ async function runAgent(
       schedule_value: t.schedule_value,
       status: t.status,
       next_run: t.next_run,
+      model: t.model,
     })),
   );
 
@@ -303,14 +328,26 @@ async function startMessageLoop(): Promise<void> {
   while (true) {
     try {
       const jids = Object.keys(registeredGroups);
-      const { messages, newTimestamp } = getNewMessages(
+      const { messages: rawMessages, newTimestamp } = getNewMessages(
         jids,
         lastTimestamp,
         ASSISTANT_NAME,
       );
 
+      // Filter out already-processed messages (dedup for same-second timestamps)
+      const messages = rawMessages.filter((m) => !processedIds.has(m.id));
+
       if (messages.length > 0) {
         logger.info({ count: messages.length }, 'New messages');
+
+        // Track processed IDs; clear set when timestamp advances
+        if (newTimestamp > processedIdsTimestamp) {
+          processedIds.clear();
+          processedIdsTimestamp = newTimestamp;
+        }
+        for (const m of rawMessages) {
+          processedIds.add(m.id);
+        }
 
         // Advance the "seen" cursor for all messages immediately
         lastTimestamp = newTimestamp;
@@ -338,8 +375,9 @@ async function startMessageLoop(): Promise<void> {
           // Non-trigger messages accumulate in DB and get pulled as
           // context when a trigger eventually arrives.
           if (needsTrigger) {
+            const pattern = createTriggerPattern(group.trigger);
             const hasTrigger = groupMessages.some((m) =>
-              TRIGGER_PATTERN.test(m.content.trim()),
+              pattern.test(m.content.trim()),
             );
             if (!hasTrigger) continue;
           }

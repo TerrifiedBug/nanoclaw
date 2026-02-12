@@ -50,6 +50,16 @@ export const TRIGGER_PATTERN = new RegExp(
   'i',
 );
 
+/**
+ * Create a trigger pattern from a per-group trigger string (e.g. "@BotName").
+ * Falls back to the global ASSISTANT_NAME if trigger is empty.
+ */
+export function createTriggerPattern(trigger: string): RegExp {
+  const t = trigger?.trim();
+  if (!t) return TRIGGER_PATTERN;
+  return new RegExp(`^${escapeRegex(t)}\\b`, 'i');
+}
+
 // Timezone for scheduled tasks (cron expressions, etc.)
 // Uses system timezone by default
 export const TIMEZONE =

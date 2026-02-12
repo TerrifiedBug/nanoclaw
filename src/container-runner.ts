@@ -40,6 +40,7 @@ export interface ContainerInput {
   chatJid: string;
   isMain: boolean;
   isScheduledTask?: boolean;
+  model?: string;
 }
 
 export interface ContainerOutput {
@@ -58,6 +59,7 @@ interface VolumeMount {
 function buildVolumeMounts(
   group: RegisteredGroup,
   isMain: boolean,
+  modelOverride?: string,
 ): VolumeMount[] {
   const mounts: VolumeMount[] = [];
   const homeDir = getHomeDir();
@@ -218,10 +220,27 @@ function buildVolumeMounts(
       }
     }
 
-    if (filteredLines.length > 0) {
+    // Per-task model override takes highest priority
+    if (modelOverride) {
+      const idx = filteredLines.findIndex((l) => l.trim().startsWith('CLAUDE_MODEL='));
+      if (idx >= 0) filteredLines[idx] = `CLAUDE_MODEL=${modelOverride}`;
+      else filteredLines.push(`CLAUDE_MODEL=${modelOverride}`);
+    }
+
+    // Quote env values to prevent shell injection (# truncation, $() execution, etc.)
+    const quotedLines = filteredLines.map((line) => {
+      const eqIdx = line.indexOf('=');
+      if (eqIdx < 0) return line;
+      const key = line.slice(0, eqIdx);
+      const value = line.slice(eqIdx + 1);
+      const escaped = value.replace(/'/g, "'\\''");
+      return `${key}='${escaped}'`;
+    });
+
+    if (quotedLines.length > 0) {
       fs.writeFileSync(
         path.join(envDir, 'env'),
-        filteredLines.join('\n') + '\n',
+        quotedLines.join('\n') + '\n',
       );
       mounts.push({
         hostPath: envDir,
@@ -307,7 +326,7 @@ export async function runContainerAgent(
   const groupDir = path.join(GROUPS_DIR, group.folder);
   fs.mkdirSync(groupDir, { recursive: true });
 
-  const mounts = buildVolumeMounts(group, input.isMain);
+  const mounts = buildVolumeMounts(group, input.isMain, input.model);
   const safeName = group.folder.replace(/[^a-zA-Z0-9-]/g, '-');
   const containerName = `nanoclaw-${safeName}-${Date.now()}`;
   const containerArgs = buildContainerArgs(mounts, containerName);
@@ -692,6 +711,7 @@ export function writeTasksSnapshot(
     schedule_value: string;
     status: string;
     next_run: string | null;
+    model?: string | null;
   }>,
 ): void {
   // Write filtered tasks to the group's IPC directory

@@ -4,11 +4,12 @@ import path from 'path';
 import makeWASocket, {
   DisconnectReason,
   WASocket,
+  downloadMediaMessage,
   makeCacheableSignalKeyStore,
   useMultiFileAuthState,
 } from '@whiskeysockets/baileys';
 
-import { BUSINESS_AUTH_DIR, STORE_DIR } from '../config.js';
+import { BUSINESS_AUTH_DIR, GROUPS_DIR, STORE_DIR } from '../config.js';
 import {
   getLastGroupSync,
   setLastGroupSync,
@@ -160,7 +161,7 @@ export class WhatsAppChannel implements Channel {
         // Only deliver full message for registered groups
         const groups = this.opts.registeredGroups();
         if (groups[chatJid]) {
-          const content =
+          let content =
             msg.message?.conversation ||
             msg.message?.extendedTextMessage?.text ||
             msg.message?.imageMessage?.caption ||
@@ -168,6 +169,18 @@ export class WhatsAppChannel implements Channel {
             '';
           const sender = msg.key.participant || msg.key.remoteJid || '';
           const senderName = msg.pushName || sender.split('@')[0];
+
+          // Download media (images, videos, documents, audio) if present
+          const hasMedia = msg.message?.imageMessage || msg.message?.videoMessage ||
+            msg.message?.documentMessage || msg.message?.audioMessage;
+          if (hasMedia) {
+            const media = await this.downloadMedia(msg, groups[chatJid].folder);
+            if (media) {
+              content = content
+                ? `${content}\n[${media.type}: ${media.path}]`
+                : `[${media.type}: ${media.path}]`;
+            }
+          }
 
           this.opts.onMessage(chatJid, {
             id: msg.key.id || '',
@@ -210,6 +223,43 @@ export class WhatsAppChannel implements Channel {
 
   ownsJid(jid: string): boolean {
     return jid.endsWith('@g.us') || jid.endsWith('@s.whatsapp.net');
+  }
+
+  /**
+   * Download media from a WhatsApp message and save to the group's media directory.
+   * Returns a container-relative path reference, or null if no media or download failed.
+   */
+  private async downloadMedia(
+    msg: Parameters<typeof downloadMediaMessage>[0],
+    groupFolder: string,
+  ): Promise<{ path: string; type: string } | null> {
+    const mediaTypes: Array<{ key: string; type: string; ext: string }> = [
+      { key: 'imageMessage', type: 'image', ext: 'jpg' },
+      { key: 'videoMessage', type: 'video', ext: 'mp4' },
+      { key: 'documentMessage', type: 'document', ext: '' },
+      { key: 'audioMessage', type: 'audio', ext: 'ogg' },
+    ];
+
+    for (const mt of mediaTypes) {
+      const mediaMsg = (msg.message as Record<string, any>)?.[mt.key];
+      if (!mediaMsg) continue;
+
+      try {
+        const buffer = await downloadMediaMessage(msg, 'buffer', {});
+        const ext = mt.ext || (mediaMsg.fileName as string)?.split('.').pop() || 'bin';
+        const filename = `${msg.key.id}.${ext}`;
+        const mediaDir = path.join(GROUPS_DIR, groupFolder, 'media');
+        fs.mkdirSync(mediaDir, { recursive: true });
+        const filePath = path.join(mediaDir, filename);
+        fs.writeFileSync(filePath, buffer);
+
+        logger.info({ groupFolder, type: mt.type, filename }, 'Media downloaded');
+        return { path: `/workspace/group/media/${filename}`, type: mt.type };
+      } catch (err) {
+        logger.warn({ err, msgId: msg.key.id, type: mt.type }, 'Failed to download media');
+      }
+    }
+    return null;
   }
 
   async disconnect(): Promise<void> {

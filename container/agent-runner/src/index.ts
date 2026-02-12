@@ -16,7 +16,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { query, HookCallback, PreCompactHookInput, PostToolUseHookInput } from '@anthropic-ai/claude-agent-sdk';
+import { query, HookCallback, PreCompactHookInput, PreToolUseHookInput, PostToolUseHookInput } from '@anthropic-ai/claude-agent-sdk';
 import { fileURLToPath } from 'url';
 
 interface ContainerInput {
@@ -67,6 +67,34 @@ function postToClaudeMem(endpoint: string, body: Record<string, unknown>): void 
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   }).catch(err => log(`[claude-mem] ${endpoint} error: ${err instanceof Error ? err.message : String(err)}`));
+}
+
+// Env vars that must never leak to agent-spawned Bash commands.
+// The SDK process itself retains them (needed for auth), but child shells don't.
+const SENSITIVE_VARS = [
+  'ANTHROPIC_API_KEY',
+  'CLAUDE_CODE_OAUTH_TOKEN',
+];
+
+function createPreToolUseHook(): HookCallback {
+  return async (input) => {
+    const h = input as PreToolUseHookInput;
+    const toolInput = h.tool_input as Record<string, unknown>;
+    if (h.tool_name === 'Bash' && typeof toolInput?.command === 'string') {
+      const unsetPrefix = SENSITIVE_VARS.map(v => `unset ${v}`).join('; ');
+      return {
+        hookSpecificOutput: {
+          hookEventName: h.hook_event_name,
+          permissionDecision: 'allow' as const,
+          updatedInput: {
+            ...toolInput,
+            command: `${unsetPrefix}; ${toolInput.command}`,
+          },
+        },
+      };
+    }
+    return {};
+  };
 }
 
 function createPostToolUseHook(groupFolder: string): HookCallback {
@@ -433,6 +461,7 @@ async function runQuery(
         },
       },
       hooks: {
+        PreToolUse: [{ matcher: 'Bash', hooks: [createPreToolUseHook()] }],
         PreCompact: [{ hooks: [createPreCompactHook()] }],
         ...(CLAUDE_MEM_URL ? {
           PostToolUse: [{ hooks: [createPostToolUseHook(containerInput.groupFolder)] }],

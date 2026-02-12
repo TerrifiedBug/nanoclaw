@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { ASSISTANT_NAME, TRIGGER_PATTERN } from './config.js';
+import { ASSISTANT_NAME, TRIGGER_PATTERN, createTriggerPattern } from './config.js';
 import {
   escapeXml,
   formatMessages,
@@ -134,6 +134,32 @@ describe('TRIGGER_PATTERN', () => {
   });
 });
 
+describe('createTriggerPattern (per-group)', () => {
+  it('creates pattern from custom trigger string', () => {
+    const pattern = createTriggerPattern('@CustomBot');
+    expect(pattern.test('@CustomBot hello')).toBe(true);
+    expect(pattern.test('@custombot hello')).toBe(true);
+    expect(pattern.test(`@${ASSISTANT_NAME} hello`)).toBe(false);
+  });
+
+  it('respects word boundaries', () => {
+    const pattern = createTriggerPattern('@Bot');
+    expect(pattern.test('@Bot hello')).toBe(true);
+    expect(pattern.test('@Botnet hello')).toBe(false);
+    expect(pattern.test("@Bot's thing")).toBe(true);
+  });
+
+  it('only matches at start of message', () => {
+    const pattern = createTriggerPattern('@Bot');
+    expect(pattern.test('hello @Bot')).toBe(false);
+  });
+
+  it('falls back to global TRIGGER_PATTERN for empty trigger', () => {
+    const pattern = createTriggerPattern('');
+    expect(pattern.test(`@${ASSISTANT_NAME} hello`)).toBe(true);
+  });
+});
+
 // --- Outbound formatting (internal tag stripping + prefix) ---
 
 describe('stripInternalTags', () => {
@@ -210,9 +236,11 @@ describe('trigger gating (requiresTrigger interaction)', () => {
     isMainGroup: boolean,
     requiresTrigger: boolean | undefined,
     messages: NewMessage[],
+    trigger?: string,
   ): boolean {
     if (!shouldRequireTrigger(isMainGroup, requiresTrigger)) return true;
-    return messages.some((m) => TRIGGER_PATTERN.test(m.content.trim()));
+    const pattern = createTriggerPattern(trigger || `@${ASSISTANT_NAME}`);
+    return messages.some((m) => pattern.test(m.content.trim()));
   }
 
   it('main group always processes (no trigger needed)', () => {
@@ -243,5 +271,17 @@ describe('trigger gating (requiresTrigger interaction)', () => {
   it('non-main group with requiresTrigger=false always processes (no trigger needed)', () => {
     const msgs = [makeMsg({ content: 'hello no trigger' })];
     expect(shouldProcess(false, false, msgs)).toBe(true);
+  });
+
+  it('uses per-group trigger instead of global ASSISTANT_NAME', () => {
+    const msgs = [makeMsg({ content: '@CustomBot do something' })];
+    expect(shouldProcess(false, true, msgs, '@CustomBot')).toBe(true);
+    // Same message should NOT trigger with global default
+    expect(shouldProcess(false, true, msgs)).toBe(false);
+  });
+
+  it('per-group trigger is case-insensitive', () => {
+    const msgs = [makeMsg({ content: '@custombot do something' })];
+    expect(shouldProcess(false, true, msgs, '@CustomBot')).toBe(true);
   });
 });
