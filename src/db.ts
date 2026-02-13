@@ -86,7 +86,7 @@ function createSchema(database: Database.Database): void {
   // Add model column if it doesn't exist (migration for per-task model selection)
   try {
     database.exec(
-      `ALTER TABLE scheduled_tasks ADD COLUMN model TEXT DEFAULT 'claude-sonnet-4-5-20250929'`,
+      `ALTER TABLE scheduled_tasks ADD COLUMN model TEXT DEFAULT 'claude-sonnet-4-5'`,
     );
   } catch {
     /* column already exists */
@@ -324,7 +324,7 @@ export function createTask(
     task.schedule_type,
     task.schedule_value,
     task.context_mode || 'isolated',
-    task.model || 'claude-sonnet-4-5-20250929',
+    task.model || 'claude-sonnet-4-5',
     task.next_run,
     task.status,
     task.created_at,
