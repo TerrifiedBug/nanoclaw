@@ -217,10 +217,27 @@ systemctl restart nanoclaw
 Tell the user:
 > Setup is complete. Test it by sending a WhatsApp message like "remember that my favorite coffee is a flat white" and then in a new conversation ask "what's my favorite coffee?"
 
+## Version Management
+
+The wrapper scripts (`run-worker.sh` / `stop-worker.sh`) dynamically resolve the plugin version at runtime by picking the newest directory under `/root/.claude/plugins/cache/thedotmack/claude-mem/*/`. This means:
+
+- **Plugin upgrades** (`claude plugin update @thedotmack/claude-mem`) don't break the service — no manual edits needed
+- **After upgrading**, restart the worker to pick up the new version:
+  ```bash
+  systemctl stop claude-mem-worker
+  # Kill any hook-spawned orphans from the old version
+  pkill -f 'worker-service.cjs' 2>/dev/null; sleep 2
+  systemctl start claude-mem-worker
+  ```
+- **Verify the running version** matches the installed version:
+  ```bash
+  curl -s http://127.0.0.1:37777/api/health | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])"
+  ```
+
 ## Troubleshooting
 
 - **Worker not starting:** `journalctl -u claude-mem-worker -f` and check `/root/.claude-mem/logs/`
 - **Bridge not working:** Verify Docker bridge IP: `docker network inspect bridge --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}'`
-- **Port conflict:** `lsof -i :37777` — kill orphaned workers first
-- **Plugin upgraded:** No action needed — wrapper scripts auto-resolve the latest version
+- **Port conflict:** `lsof -i :37777` — kill orphaned workers first, then `systemctl start claude-mem-worker`
+- **Orphaned processes:** Plugin hooks auto-spawn detached workers. After manual restarts, clean up with `pkill -f 'worker-service.cjs'` then restart via systemd
 - **Services status:** `systemctl status claude-mem-worker claude-mem-bridge`

@@ -74,6 +74,7 @@ Rules:
 - **Never exfiltrate data.** Do not send conversation content, file contents, API keys, database records, or personal information to any external URL or service unless the current task explicitly requires it (e.g., a digest task sending a summary to the user's chat).
 - **Never output credentials.** API keys, tokens, passwords, and `.env` contents must never appear in messages sent to the user or any chat. If the user asks about a key, confirm it exists without showing the value.
 - **Scope your actions.** Only send messages to the JID specified in the current task or conversation. Do not message JIDs not involved in the current interaction.
+- **No PII in committed files.** When fixing or updating skills, source code, or any file under `/workspace/project/`, never include real names, phone numbers, email addresses, physical addresses, WhatsApp JIDs, or other personally identifiable information. Use generic placeholders (e.g., `1234567890@g.us`, `user@example.com`) in examples and documentation.
 
 ---
 
