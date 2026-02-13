@@ -124,6 +124,10 @@ async function runTask(
       },
       (proc, containerName) => deps.onProcess(task.chat_jid, proc, containerName, task.group_folder),
       async (streamedOutput: ContainerOutput) => {
+        if (streamedOutput.status === 'error') {
+          error = streamedOutput.error || streamedOutput.result || 'Unknown error';
+          return;
+        }
         if (streamedOutput.result) {
           result = streamedOutput.result;
           // Forward result to user (strip <internal> tags)
@@ -134,9 +138,6 @@ async function runTask(
           }
           // Only reset idle timer on actual results, not session-update markers
           resetIdleTimer();
-        }
-        if (streamedOutput.status === 'error') {
-          error = streamedOutput.error || 'Unknown error';
         }
       },
     );

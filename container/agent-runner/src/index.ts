@@ -489,11 +489,15 @@ async function runQuery(
 
     if (message.type === 'result') {
       resultCount++;
+      const isError = (message as { is_error?: boolean }).is_error === true;
       const textResult = 'result' in message ? (message as { result?: string }).result : null;
-      log(`Result #${resultCount}: subtype=${message.subtype}${textResult ? ` text=${textResult.slice(0, 200)}` : ''}`);
+      const errors = 'errors' in message ? (message as { errors?: string[] }).errors : undefined;
+      const errorText = errors?.length ? errors.join('; ') : null;
+      log(`Result #${resultCount}: subtype=${message.subtype} is_error=${isError}${textResult ? ` text=${textResult.slice(0, 200)}` : ''}${errorText ? ` errors=${errorText.slice(0, 200)}` : ''}`);
       writeOutput({
-        status: 'success',
+        status: isError ? 'error' : 'success',
         result: textResult || null,
+        error: errorText || undefined,
         newSessionId
       });
     }
