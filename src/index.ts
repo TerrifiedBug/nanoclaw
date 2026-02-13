@@ -196,6 +196,10 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   const output = await runAgent(group, prompt, chatJid, async (result) => {
     // Streaming output callback — called for each agent result
+    if (result.status === 'error') {
+      hadError = true;
+      return;
+    }
     if (result.result) {
       const raw = typeof result.result === 'string' ? result.result : JSON.stringify(result.result);
       // Strip <internal>...</internal> blocks — agent uses these for internal reasoning
@@ -208,10 +212,6 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       }
       // Only reset idle timer on actual results, not session-update markers (result: null)
       resetIdleTimer();
-    }
-
-    if (result.status === 'error') {
-      hadError = true;
     }
   });
 
@@ -226,6 +226,8 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       logger.warn({ group: group.name }, 'Agent error after output was sent, skipping cursor rollback to prevent duplicates');
       return true;
     }
+    // Notify user so they know the agent failed
+    await whatsapp.sendMessage(chatJid, `[${ASSISTANT_NAME} error] Something went wrong processing your message. Will retry on next message.`).catch(() => {});
     // Roll back cursor so retries can re-process these messages
     lastAgentTimestamp[chatJid] = previousCursor;
     saveState();
