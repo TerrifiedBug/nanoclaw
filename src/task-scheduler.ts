@@ -170,6 +170,15 @@ async function runTask(
 
   const durationMs = Date.now() - startTime;
 
+  // Notify user if the task failed (so they don't get silent failures)
+  if (error && !hadSuccessfulResponse) {
+    const taskLabel = task.prompt.split('\n')[0].slice(0, 60);
+    await deps.sendMessage(
+      task.chat_jid,
+      `[Scheduled task failed] ${taskLabel}\nError: ${error.slice(0, 200)}`,
+    ).catch(() => {});
+  }
+
   logTaskRun({
     task_id: task.id,
     run_at: new Date().toISOString(),
