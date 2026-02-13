@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 
 import makeWASocket, {
+  Browsers,
   DisconnectReason,
   WASocket,
   downloadMediaMessage,
@@ -66,7 +67,7 @@ export class WhatsAppChannel implements Channel {
       printQRInTerminal: false,
       logger,
       syncFullHistory: false,
-      browser: ['NanoClaw-Biz', 'Chrome', '1.0.0'],
+      browser: Browsers.macOS('Chrome'),
     });
 
     this.sock.ev.on('connection.update', (update) => {
