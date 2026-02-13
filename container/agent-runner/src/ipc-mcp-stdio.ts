@@ -92,7 +92,7 @@ SCHEDULE VALUE FORMAT (all times are LOCAL timezone):
     schedule_type: z.enum(['cron', 'interval', 'once']).describe('cron=recurring at specific times, interval=recurring every N ms, once=run once at specific time'),
     schedule_value: z.string().describe('cron: "*/5 * * * *" | interval: milliseconds like "300000" | once: local timestamp like "2026-02-01T15:30:00" (no Z suffix!)'),
     context_mode: z.enum(['group', 'isolated']).default('group').describe('group=runs with chat history and memory, isolated=fresh session (include context in prompt)'),
-    model: z.string().optional().describe('Claude model to use for this task (e.g., "claude-sonnet-4-5-20250929" for cheaper tasks, "claude-opus-4-6" for complex tasks). Defaults to the global model.'),
+    model: z.string().optional().describe('Claude model to use for this task (e.g., "claude-sonnet-4-5-20250929" for cheaper tasks, "claude-opus-4-6" for complex tasks). Always use full versioned model IDs. Defaults to the global model.'),
     target_group_jid: z.string().optional().describe('(Main group only) JID of the group to schedule the task for. Defaults to the current group.'),
   },
   async (args) => {
@@ -137,7 +137,14 @@ SCHEDULE VALUE FORMAT (all times are LOCAL timezone):
       createdBy: groupFolder,
       timestamp: new Date().toISOString(),
     };
-    if (args.model) data.model = args.model;
+    if (args.model) {
+      // Normalize short aliases to full versioned model IDs
+      const MODEL_ALIASES: Record<string, string> = {
+        'claude-sonnet-4-5': 'claude-sonnet-4-5-20250929',
+        'claude-haiku-4-5': 'claude-haiku-4-5-20251001',
+      };
+      data.model = MODEL_ALIASES[args.model] || args.model;
+    }
 
     const filename = writeIpcFile(TASKS_DIR, data);
 

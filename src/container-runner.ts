@@ -209,10 +209,17 @@ function buildVolumeMounts(
       return allowedVars.some((v) => trimmed.startsWith(`${v}=`));
     });
 
+    // Normalize short model aliases to full versioned IDs
+    const MODEL_ALIASES: Record<string, string> = {
+      'claude-sonnet-4-5': 'claude-sonnet-4-5-20250929',
+      'claude-haiku-4-5': 'claude-haiku-4-5-20251001',
+    };
+    const normalizeModel = (m: string) => MODEL_ALIASES[m] || m;
+
     // Override CLAUDE_MODEL from store file if it exists (set via /set-model skill)
     const modelFile = path.join(projectRoot, 'store', 'claude-model');
     if (fs.existsSync(modelFile)) {
-      const model = fs.readFileSync(modelFile, 'utf-8').trim();
+      const model = normalizeModel(fs.readFileSync(modelFile, 'utf-8').trim());
       if (model) {
         const idx = filteredLines.findIndex((l) => l.trim().startsWith('CLAUDE_MODEL='));
         if (idx >= 0) filteredLines[idx] = `CLAUDE_MODEL=${model}`;
@@ -222,9 +229,10 @@ function buildVolumeMounts(
 
     // Per-task model override takes highest priority
     if (modelOverride) {
+      const normalized = normalizeModel(modelOverride);
       const idx = filteredLines.findIndex((l) => l.trim().startsWith('CLAUDE_MODEL='));
-      if (idx >= 0) filteredLines[idx] = `CLAUDE_MODEL=${modelOverride}`;
-      else filteredLines.push(`CLAUDE_MODEL=${modelOverride}`);
+      if (idx >= 0) filteredLines[idx] = `CLAUDE_MODEL=${normalized}`;
+      else filteredLines.push(`CLAUDE_MODEL=${normalized}`);
     }
 
     // Quote env values to prevent shell injection (# truncation, $() execution, etc.)
@@ -344,12 +352,19 @@ export async function runContainerAgent(
     'Container mount configuration',
   );
 
+  // Determine effective model for logging
+  const storeModelFile = path.join(process.cwd(), 'store', 'claude-model');
+  const effectiveModel = input.model
+    || (fs.existsSync(storeModelFile) && fs.readFileSync(storeModelFile, 'utf-8').trim())
+    || 'sdk-default';
+
   logger.info(
     {
       group: group.name,
       containerName,
       mountCount: mounts.length,
       isMain: input.isMain,
+      model: effectiveModel,
     },
     'Spawning container agent',
   );

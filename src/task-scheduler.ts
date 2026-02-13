@@ -120,7 +120,7 @@ async function runTask(
         chatJid: task.chat_jid,
         isMain,
         isScheduledTask: true,
-        model: task.model || 'claude-sonnet-4-5',
+        model: task.model || 'claude-sonnet-4-5-20250929',
       },
       (proc, containerName) => deps.onProcess(task.chat_jid, proc, containerName, task.group_folder),
       async (streamedOutput: ContainerOutput) => {
