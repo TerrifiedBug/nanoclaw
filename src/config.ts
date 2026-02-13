@@ -36,6 +36,10 @@ export const IDLE_TIMEOUT = parseInt(
   process.env.IDLE_TIMEOUT || '1800000',
   10,
 ); // 30min default — how long to keep container alive after last result
+export const SCHEDULED_TASK_IDLE_TIMEOUT = parseInt(
+  process.env.SCHEDULED_TASK_IDLE_TIMEOUT || '30000',
+  10,
+); // 30s default — scheduled tasks close quickly to unblock the queue
 export const MAX_CONCURRENT_CONTAINERS = Math.max(
   1,
   parseInt(process.env.MAX_CONCURRENT_CONTAINERS || '5', 10) || 5,

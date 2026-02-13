@@ -5,8 +5,8 @@ import path from 'path';
 
 import {
   GROUPS_DIR,
-  IDLE_TIMEOUT,
   MAIN_GROUP_FOLDER,
+  SCHEDULED_TASK_IDLE_TIMEOUT,
   SCHEDULER_POLL_INTERVAL,
   TIMEZONE,
 } from './config.js';
@@ -107,7 +107,7 @@ async function runTask(
     idleTimer = setTimeout(() => {
       logger.debug({ taskId: task.id }, 'Scheduled task idle timeout, closing container stdin');
       deps.queue.closeStdin(task.chat_jid);
-    }, IDLE_TIMEOUT);
+    }, SCHEDULED_TASK_IDLE_TIMEOUT);
   };
 
   try {
