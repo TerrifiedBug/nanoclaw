@@ -6,13 +6,6 @@
       "headers": {
         "Authorization": "Bearer ${HA_TOKEN}"
       }
-    },
-    "n8n": {
-      "type": "http",
-      "url": "${N8N_URL}/mcp",
-      "headers": {
-        "Authorization": "Bearer ${N8N_API_KEY}"
-      }
     }
   }
 }

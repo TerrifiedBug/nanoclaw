@@ -74,13 +74,13 @@ cal delete "Work" --title "Office Day" --account iCloud
 gog calendar calendars
 
 # Today's events
-gog calendar events default --from $(date -u +%Y-%m-%dT00:00:00Z) --to $(date -u -d '+1 day' +%Y-%m-%dT23:59:59Z)
+gog calendar events primary --from $(date -u +%Y-%m-%dT00:00:00Z) --to $(date -u -d '+1 day' +%Y-%m-%dT23:59:59Z)
 
 # Tomorrow's schedule
-gog calendar events default --from $(date -u -d '+1 day' +%Y-%m-%dT00:00:00Z) --to $(date -u -d '+2 days' +%Y-%m-%dT23:59:59Z)
+gog calendar events primary --from $(date -u -d '+1 day' +%Y-%m-%dT00:00:00Z) --to $(date -u -d '+2 days' +%Y-%m-%dT23:59:59Z)
 
 # This week
-gog calendar events default --from $(date -u +%Y-%m-%dT00:00:00Z) --to $(date -u -d '+7 days' +%Y-%m-%dT23:59:59Z)
+gog calendar events primary --from $(date -u +%Y-%m-%dT00:00:00Z) --to $(date -u -d '+7 days' +%Y-%m-%dT23:59:59Z)
 
 # Create event
 gog calendar create --calendar "$CALENDAR_ID" \
@@ -107,7 +107,7 @@ TODAY_START=$(date -u +%Y-%m-%dT00:00:00Z)
 TODAY_END=$(date -u -d '+1 day' +%Y-%m-%dT00:00:00Z)
 
 echo "=== Google Calendar ==="
-gog calendar events default --from "$TODAY_START" --to "$TODAY_END"
+gog calendar events primary --from "$TODAY_START" --to "$TODAY_END"
 
 echo "=== CalDAV Calendars ==="
 cal events --from "$TODAY_START" --to "$TODAY_END"
