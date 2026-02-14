@@ -23,6 +23,10 @@ Single Node.js process that connects to WhatsApp, routes messages to Claude Agen
 | `container/skills/claude-mem/SKILL.md` | Persistent cross-session memory via claude-mem API |
 | `container/skills/email/SKILL.md` | IMAP email reader (multi-provider: Gmail, Yahoo, etc.) |
 
+## Security
+
+Agents run in containers with explicit mount boundaries. Before modifying files that handle mounts, paths, credentials, or IPC authorization, read [docs/SECURITY.md](docs/SECURITY.md) and consider the security implications.
+
 ## Skills
 
 | Skill | When to Use |
