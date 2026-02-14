@@ -271,6 +271,12 @@ export class WhatsAppChannel implements Channel {
     return null;
   }
 
+  async deleteMessage(jid: string, messageId: string): Promise<void> {
+    await this.sock.sendMessage(jid, {
+      delete: { remoteJid: jid, id: messageId, fromMe: true },
+    });
+  }
+
   async disconnect(): Promise<void> {
     this.connected = false;
     this.sock?.end(undefined);

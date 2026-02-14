@@ -34,3 +34,6 @@ agents-sdk-docs
 
 # Plans
 docs/plans/
+
+# One-off scripts
+src/cleanup-*.ts
