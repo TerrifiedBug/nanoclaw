@@ -112,6 +112,11 @@ export class WhatsAppChannel implements Channel {
           }
         }
 
+        // Announce online presence
+        this.sock.sendPresenceUpdate('available').catch((err) =>
+          logger.debug({ err }, 'Failed to send initial presence'),
+        );
+
         // Flush any messages queued while disconnected
         this.flushOutgoingQueue().catch((err) =>
           logger.error({ err }, 'Failed to flush outgoing queue'),
@@ -270,7 +275,7 @@ export class WhatsAppChannel implements Channel {
 
   async setTyping(jid: string, isTyping: boolean): Promise<void> {
     try {
-      await this.sock.sendPresenceUpdate(isTyping ? 'composing' : 'paused', jid);
+      await this.sock.sendPresenceUpdate(isTyping ? 'composing' : 'available', jid);
     } catch (err) {
       logger.debug({ jid, err }, 'Failed to update typing status');
     }

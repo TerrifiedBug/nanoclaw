@@ -16,8 +16,9 @@
 
 import fs from 'fs';
 import path from 'path';
-import { query, HookCallback, PreCompactHookInput, PreToolUseHookInput, PostToolUseHookInput } from '@anthropic-ai/claude-agent-sdk';
+import { query, HookCallback, PreCompactHookInput, PostToolUseHookInput } from '@anthropic-ai/claude-agent-sdk';
 import { fileURLToPath } from 'url';
+import { SECRET_ENV_VARS, createSanitizeBashHook, createSecretPathBlockHook } from './security-hooks.js';
 
 interface ContainerInput {
   prompt: string;
@@ -69,32 +70,14 @@ function postToClaudeMem(endpoint: string, body: Record<string, unknown>): void 
   }).catch(err => log(`[claude-mem] ${endpoint} error: ${err instanceof Error ? err.message : String(err)}`));
 }
 
-// Env vars that must never leak to agent-spawned Bash commands.
-// The SDK process itself retains them (needed for auth), but child shells don't.
-const SENSITIVE_VARS = [
-  'ANTHROPIC_API_KEY',
-  'CLAUDE_CODE_OAUTH_TOKEN',
-];
-
-function createPreToolUseHook(): HookCallback {
-  return async (input) => {
-    const h = input as PreToolUseHookInput;
-    const toolInput = h.tool_input as Record<string, unknown>;
-    if (h.tool_name === 'Bash' && typeof toolInput?.command === 'string') {
-      const unsetPrefix = SENSITIVE_VARS.map(v => `unset ${v}`).join('; ');
-      return {
-        hookSpecificOutput: {
-          hookEventName: h.hook_event_name,
-          permissionDecision: 'allow' as const,
-          updatedInput: {
-            ...toolInput,
-            command: `${unsetPrefix}; ${toolInput.command}`,
-          },
-        },
-      };
-    }
-    return {};
-  };
+// Capture secrets before removing them from process.env.
+// The SDK receives them via the `env` option; child processes won't see them.
+const secretEnv: Record<string, string> = {};
+for (const key of SECRET_ENV_VARS) {
+  if (process.env[key]) {
+    secretEnv[key] = process.env[key]!;
+    delete process.env[key];
+  }
 }
 
 function createPostToolUseHook(groupFolder: string): HookCallback {
@@ -477,8 +460,12 @@ async function runQuery(
           },
         },
       },
+      env: { ...process.env, ...secretEnv },
       hooks: {
-        PreToolUse: [{ matcher: 'Bash', hooks: [createPreToolUseHook()] }],
+        PreToolUse: [
+          { matcher: 'Bash', hooks: [createSanitizeBashHook()] },
+          { matcher: 'Read', hooks: [createSecretPathBlockHook()] },
+        ],
         PreCompact: [{ hooks: [createPreCompactHook()] }],
         ...(CLAUDE_MEM_URL ? {
           PostToolUse: [{ hooks: [createPostToolUseHook(containerInput.groupFolder)] }],
@@ -531,6 +518,7 @@ async function main(): Promise<void> {
   try {
     const stdinData = await readStdin();
     containerInput = JSON.parse(stdinData);
+    try { fs.unlinkSync('/tmp/input.json'); } catch { /* ignore */ }
     log(`Received input for group: ${containerInput.groupFolder}`);
   } catch (err) {
     writeOutput({
