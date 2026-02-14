@@ -203,21 +203,64 @@ describe('getNewMessages', () => {
     expect(newTimestamp).toBe('2024-01-01T00:00:04.000Z');
   });
 
-  it('filters by timestamp', () => {
+  it('filters by timestamp (>= comparison)', () => {
     const { messages } = getNewMessages(
       ['group1@g.us', 'group2@g.us'],
       '2024-01-01T00:00:02.000Z',
       'Andy',
     );
-    // Only g1 msg2 (after ts, not bot)
-    expect(messages).toHaveLength(1);
-    expect(messages[0].content).toBe('g1 msg2');
+    // With >= comparison: a2 (at cursor ts=02) AND a4 (after cursor), not a3 (bot)
+    expect(messages).toHaveLength(2);
+    expect(messages[0].content).toBe('g2 msg1');
+    expect(messages[1].content).toBe('g1 msg2');
   });
 
   it('returns empty for no registered groups', () => {
     const { messages, newTimestamp } = getNewMessages([], '', 'Andy');
     expect(messages).toHaveLength(0);
     expect(newTimestamp).toBe('');
+  });
+
+  it('returns same-second messages on subsequent poll (dedup fix)', () => {
+    // Setup: only one group with a single message at ts=05
+    storeChatMetadata('group3@g.us', '2024-01-01T00:00:00.000Z');
+    store({
+      id: 'b1',
+      chat_jid: 'group3@g.us',
+      sender: 'user@s.whatsapp.net',
+      sender_name: 'User',
+      content: 'first msg',
+      timestamp: '2024-01-01T00:00:05.000Z',
+    });
+
+    // First poll: cursor advances to ts=05
+    const { messages: first, newTimestamp: ts1 } = getNewMessages(
+      ['group3@g.us'],
+      '2024-01-01T00:00:00.000Z',
+      'Andy',
+    );
+    expect(first).toHaveLength(1);
+    expect(ts1).toBe('2024-01-01T00:00:05.000Z');
+
+    // A late message arrives at the SAME second (ts=05)
+    store({
+      id: 'b2',
+      chat_jid: 'group3@g.us',
+      sender: 'user@s.whatsapp.net',
+      sender_name: 'User',
+      content: 'late arrival same second',
+      timestamp: '2024-01-01T00:00:05.000Z',
+    });
+
+    // Second poll using ts1 as cursor — with >= comparison, b2 is found
+    // (along with b1 which the caller must filter via processedIds)
+    const { messages: second } = getNewMessages(
+      ['group3@g.us'],
+      ts1,
+      'Andy',
+    );
+    const hasLateArrival = second.some((m) => m.id === 'b2');
+    expect(hasLateArrival).toBe(true);
   });
 });
 

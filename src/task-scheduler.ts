@@ -5,13 +5,14 @@ import path from 'path';
 
 import {
   GROUPS_DIR,
-  IDLE_TIMEOUT,
   MAIN_GROUP_FOLDER,
+  SCHEDULED_TASK_IDLE_TIMEOUT,
   SCHEDULER_POLL_INTERVAL,
   TIMEZONE,
 } from './config.js';
 import { ContainerOutput, runContainerAgent, writeTasksSnapshot } from './container-runner.js';
 import {
+  claimTask,
   getAllTasks,
   getDueTasks,
   getTaskById,
@@ -28,6 +29,7 @@ export interface SchedulerDependencies {
   queue: GroupQueue;
   onProcess: (groupJid: string, proc: ChildProcess, containerName: string, groupFolder: string) => void;
   sendMessage: (jid: string, text: string) => Promise<void>;
+  assistantName: string;
 }
 
 async function runTask(
@@ -37,6 +39,11 @@ async function runTask(
   const startTime = Date.now();
   const groupDir = path.join(GROUPS_DIR, task.group_folder);
   fs.mkdirSync(groupDir, { recursive: true });
+
+  // Claim the task immediately so the scheduler won't re-enqueue it
+  // while the container is still running (next_run stays NULL until
+  // updateTaskAfterRun sets the real next run after completion)
+  claimTask(task.id);
 
   logger.info(
     { taskId: task.id, group: task.group_folder },
@@ -78,11 +85,13 @@ async function runTask(
       schedule_value: t.schedule_value,
       status: t.status,
       next_run: t.next_run,
+      model: t.model,
     })),
   );
 
   let result: string | null = null;
   let error: string | null = null;
+  let hadSuccessfulResponse = false;
 
   // For group context mode, use the group's current session
   const sessions = deps.getSessions();
@@ -98,7 +107,7 @@ async function runTask(
     idleTimer = setTimeout(() => {
       logger.debug({ taskId: task.id }, 'Scheduled task idle timeout, closing container stdin');
       deps.queue.closeStdin(task.chat_jid);
-    }, IDLE_TIMEOUT);
+    }, SCHEDULED_TASK_IDLE_TIMEOUT);
   };
 
   try {
@@ -111,25 +120,38 @@ async function runTask(
         chatJid: task.chat_jid,
         isMain,
         isScheduledTask: true,
+        model: task.model || 'claude-sonnet-4-5',
       },
       (proc, containerName) => deps.onProcess(task.chat_jid, proc, containerName, task.group_folder),
       async (streamedOutput: ContainerOutput) => {
+        if (streamedOutput.status === 'error') {
+          error = streamedOutput.error || streamedOutput.result || 'Unknown error';
+          return;
+        }
         if (streamedOutput.result) {
           result = streamedOutput.result;
-          // Forward result to user (sendMessage handles formatting)
-          await deps.sendMessage(task.chat_jid, streamedOutput.result);
+          // Forward result to user (strip <internal> tags)
+          const text = streamedOutput.result.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
+          if (text) {
+            await deps.sendMessage(task.chat_jid, `${deps.assistantName}: ${text}`);
+            hadSuccessfulResponse = true;
+          }
           // Only reset idle timer on actual results, not session-update markers
           resetIdleTimer();
-        }
-        if (streamedOutput.status === 'error') {
-          error = streamedOutput.error || 'Unknown error';
         }
       },
     );
 
     if (idleTimer) clearTimeout(idleTimer);
 
-    if (output.status === 'error') {
+    // If a response was already delivered, ignore late container timeout errors
+    if (output.status === 'error' && hadSuccessfulResponse) {
+      logger.info(
+        { taskId: task.id },
+        'Container timed out after successful response, treating as success',
+      );
+      error = null;
+    } else if (output.status === 'error') {
       error = output.error || 'Unknown error';
     } else if (output.result) {
       // Messages are sent via MCP tool (IPC), result text is just logged
@@ -147,6 +169,15 @@ async function runTask(
   }
 
   const durationMs = Date.now() - startTime;
+
+  // Notify user if the task failed (so they don't get silent failures)
+  if (error && !hadSuccessfulResponse) {
+    const taskLabel = task.prompt.split('\n')[0].slice(0, 60);
+    await deps.sendMessage(
+      task.chat_jid,
+      `[Scheduled task failed] ${taskLabel}\nError: ${error.slice(0, 200)}`,
+    ).catch(() => {});
+  }
 
   logTaskRun({
     task_id: task.id,

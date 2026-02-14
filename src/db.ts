@@ -82,6 +82,15 @@ function createSchema(database: Database.Database): void {
   } catch {
     /* column already exists */
   }
+
+  // Add model column if it doesn't exist (migration for per-task model selection)
+  try {
+    database.exec(
+      `ALTER TABLE scheduled_tasks ADD COLUMN model TEXT DEFAULT 'claude-sonnet-4-5'`,
+    );
+  } catch {
+    /* column already exists */
+  }
 }
 
 export function initDatabase(): void {
@@ -93,6 +102,7 @@ export function initDatabase(): void {
 
   // Migrate from JSON files if they exist
   migrateJsonState();
+
 }
 
 /** @internal - for tests only. Creates a fresh in-memory database. */
@@ -231,6 +241,53 @@ export function storeMessageDirect(msg: {
   );
 }
 
+/**
+ * Store a webhook-originated message (plain strings, no Baileys dependency).
+ * Inserts into the messages table and updates chat metadata so the
+ * polling loop picks it up like any other message.
+ */
+export function storeWebhookMessage(
+  chatJid: string,
+  messageId: string,
+  source: string,
+  text: string,
+): void {
+  const timestamp = new Date().toISOString();
+
+  storeChatMetadata(chatJid, timestamp, source);
+
+  db.prepare(
+    `INSERT OR REPLACE INTO messages (id, chat_jid, sender, sender_name, content, timestamp, is_from_me) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(messageId, chatJid, `webhook:${source}`, source, text, timestamp, 0);
+}
+
+/**
+ * Find messages matching a content pattern.
+ * Used by cleanup scripts to locate error messages, etc.
+ */
+export function findMessagesByContent(
+  pattern: string,
+): Array<{ id: string; chat_jid: string; content: string; timestamp: string }> {
+  return db
+    .prepare(
+      `SELECT id, chat_jid, content, timestamp FROM messages WHERE content LIKE ? ORDER BY timestamp`,
+    )
+    .all(pattern) as Array<{ id: string; chat_jid: string; content: string; timestamp: string }>;
+}
+
+/**
+ * Delete messages by their IDs.
+ */
+export function deleteMessagesByIds(ids: Array<{ id: string; chat_jid: string }>): number {
+  const stmt = db.prepare('DELETE FROM messages WHERE id = ? AND chat_jid = ?');
+  let count = 0;
+  for (const { id, chat_jid } of ids) {
+    const result = stmt.run(id, chat_jid);
+    count += result.changes;
+  }
+  return count;
+}
+
 export function getNewMessages(
   jids: string[],
   lastTimestamp: string,
@@ -240,10 +297,12 @@ export function getNewMessages(
 
   const placeholders = jids.map(() => '?').join(',');
   // Filter out bot's own messages by checking content prefix (not is_from_me, since user shares the account)
+  // Use >= so that messages arriving in the same second as the cursor are
+  // not permanently skipped. Callers must track processed IDs to deduplicate.
   const sql = `
     SELECT id, chat_jid, sender, sender_name, content, timestamp
     FROM messages
-    WHERE timestamp > ? AND chat_jid IN (${placeholders}) AND content NOT LIKE ?
+    WHERE timestamp >= ? AND chat_jid IN (${placeholders}) AND content NOT LIKE ?
     ORDER BY timestamp
   `;
 
@@ -281,8 +340,8 @@ export function createTask(
 ): void {
   db.prepare(
     `
-    INSERT INTO scheduled_tasks (id, group_folder, chat_jid, prompt, schedule_type, schedule_value, context_mode, next_run, status, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO scheduled_tasks (id, group_folder, chat_jid, prompt, schedule_type, schedule_value, context_mode, model, next_run, status, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
   ).run(
     task.id,
@@ -292,6 +351,7 @@ export function createTask(
     task.schedule_type,
     task.schedule_value,
     task.context_mode || 'isolated',
+    task.model || 'claude-sonnet-4-5',
     task.next_run,
     task.status,
     task.created_at,
@@ -323,7 +383,7 @@ export function updateTask(
   updates: Partial<
     Pick<
       ScheduledTask,
-      'prompt' | 'schedule_type' | 'schedule_value' | 'next_run' | 'status'
+      'prompt' | 'schedule_type' | 'schedule_value' | 'next_run' | 'status' | 'model'
     >
   >,
 ): void {
@@ -350,6 +410,10 @@ export function updateTask(
     fields.push('status = ?');
     values.push(updates.status);
   }
+  if (updates.model !== undefined) {
+    fields.push('model = ?');
+    values.push(updates.model);
+  }
 
   if (fields.length === 0) return;
 
@@ -363,6 +427,14 @@ export function deleteTask(id: string): void {
   // Delete child records first (FK constraint)
   db.prepare('DELETE FROM task_run_logs WHERE task_id = ?').run(id);
   db.prepare('DELETE FROM scheduled_tasks WHERE id = ?').run(id);
+}
+
+/**
+ * Claim a task for execution by clearing its next_run.
+ * Prevents the scheduler from re-enqueuing it while it's running.
+ */
+export function claimTask(id: string): void {
+  db.prepare(`UPDATE scheduled_tasks SET next_run = NULL WHERE id = ?`).run(id);
 }
 
 export function getDueTasks(): ScheduledTask[] {

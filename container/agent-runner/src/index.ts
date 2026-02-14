@@ -16,8 +16,9 @@
 
 import fs from 'fs';
 import path from 'path';
-import { query, HookCallback, PreCompactHookInput, PreToolUseHookInput } from '@anthropic-ai/claude-agent-sdk';
+import { query, HookCallback, PreCompactHookInput, PostToolUseHookInput } from '@anthropic-ai/claude-agent-sdk';
 import { fileURLToPath } from 'url';
+import { SECRET_ENV_VARS, createSanitizeBashHook, createSecretPathBlockHook } from './security-hooks.js';
 
 interface ContainerInput {
   prompt: string;
@@ -57,6 +58,43 @@ interface SDKUserMessage {
 const IPC_INPUT_DIR = '/workspace/ipc/input';
 const IPC_INPUT_CLOSE_SENTINEL = path.join(IPC_INPUT_DIR, '_close');
 const IPC_POLL_MS = 500;
+
+// claude-mem auto-capture: save tool use observations to the worker API if configured
+const CLAUDE_MEM_URL = process.env.CLAUDE_MEM_URL;
+
+function postToClaudeMem(endpoint: string, body: Record<string, unknown>): void {
+  if (!CLAUDE_MEM_URL) return;
+  fetch(`${CLAUDE_MEM_URL}${endpoint}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }).catch(err => log(`[claude-mem] ${endpoint} error: ${err instanceof Error ? err.message : String(err)}`));
+}
+
+// Capture secrets before removing them from process.env.
+// The SDK receives them via the `env` option; child processes won't see them.
+const secretEnv: Record<string, string> = {};
+for (const key of SECRET_ENV_VARS) {
+  if (process.env[key]) {
+    secretEnv[key] = process.env[key]!;
+    delete process.env[key];
+  }
+}
+
+function createPostToolUseHook(groupFolder: string): HookCallback {
+  return async (input) => {
+    const h = input as PostToolUseHookInput;
+    const inputStr = typeof h.tool_input === 'string' ? h.tool_input : JSON.stringify(h.tool_input);
+    const responseStr = typeof h.tool_response === 'string' ? h.tool_response : JSON.stringify(h.tool_response);
+    const text = `[${groupFolder}] Tool: ${h.tool_name}\nInput: ${inputStr.slice(0, 500)}\nOutput: ${responseStr.slice(0, 2000)}`;
+    postToClaudeMem('/api/memory/save', {
+      text,
+      title: `${h.tool_name} (${groupFolder})`,
+      project: 'nanoclaw-mem',
+    });
+    return {};
+  };
+}
 
 /**
  * Push-based async iterable for streaming user messages to the SDK.
@@ -184,30 +222,6 @@ function createPreCompactHook(): HookCallback {
   };
 }
 
-// Secrets to strip from Bash tool subprocess environments.
-// These are needed by claude-code for API auth but should never
-// be visible to commands Kit runs.
-const SECRET_ENV_VARS = ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'];
-
-function createSanitizeBashHook(): HookCallback {
-  return async (input, _toolUseId, _context) => {
-    const preInput = input as PreToolUseHookInput;
-    const command = (preInput.tool_input as { command?: string })?.command;
-    if (!command) return {};
-
-    const unsetPrefix = `unset ${SECRET_ENV_VARS.join(' ')} 2>/dev/null; `;
-    return {
-      hookSpecificOutput: {
-        hookEventName: 'PreToolUse',
-        updatedInput: {
-          ...(preInput.tool_input as Record<string, unknown>),
-          command: unsetPrefix + command,
-        },
-      },
-    };
-  };
-}
-
 function sanitizeFilename(summary: string): string {
   return summary
     .toLowerCase()
@@ -271,7 +285,7 @@ function formatTranscriptMarkdown(messages: ParsedMessage[], title?: string | nu
   lines.push('');
 
   for (const msg of messages) {
-    const sender = msg.role === 'user' ? 'User' : 'Andy';
+    const sender = msg.role === 'user' ? 'User' : 'Assistant';
     const content = msg.content.length > 2000
       ? msg.content.slice(0, 2000) + '...'
       : msg.content;
@@ -417,6 +431,7 @@ async function runQuery(
     prompt: stream,
     options: {
       cwd: '/workspace/group',
+      ...(process.env.CLAUDE_MODEL ? { model: process.env.CLAUDE_MODEL } : {}),
       additionalDirectories: extraDirs.length > 0 ? extraDirs : undefined,
       resume: sessionId,
       resumeSessionAt: resumeAt,
@@ -449,8 +464,14 @@ async function runQuery(
         },
       },
       hooks: {
+        PreToolUse: [
+          { matcher: 'Bash', hooks: [createSanitizeBashHook()] },
+          { matcher: 'Read', hooks: [createSecretPathBlockHook()] },
+        ],
         PreCompact: [{ hooks: [createPreCompactHook()] }],
-        PreToolUse: [{ matcher: 'Bash', hooks: [createSanitizeBashHook()] }],
+        ...(CLAUDE_MEM_URL ? {
+          PostToolUse: [{ hooks: [createPostToolUseHook(containerInput.groupFolder)] }],
+        } : {}),
       },
     }
   })) {
@@ -474,11 +495,15 @@ async function runQuery(
 
     if (message.type === 'result') {
       resultCount++;
+      const isError = (message as { is_error?: boolean }).is_error === true;
       const textResult = 'result' in message ? (message as { result?: string }).result : null;
-      log(`Result #${resultCount}: subtype=${message.subtype}${textResult ? ` text=${textResult.slice(0, 200)}` : ''}`);
+      const errors = 'errors' in message ? (message as { errors?: string[] }).errors : undefined;
+      const errorText = errors?.length ? errors.join('; ') : null;
+      log(`Result #${resultCount}: subtype=${message.subtype} is_error=${isError}${textResult ? ` text=${textResult.slice(0, 200)}` : ''}${errorText ? ` errors=${errorText.slice(0, 200)}` : ''}`);
       writeOutput({
-        status: 'success',
+        status: isError ? 'error' : 'success',
         result: textResult || null,
+        error: errorText || undefined,
         newSessionId
       });
     }
@@ -495,8 +520,7 @@ async function main(): Promise<void> {
   try {
     const stdinData = await readStdin();
     containerInput = JSON.parse(stdinData);
-    // Delete the temp file the entrypoint wrote — it contains secrets
-    try { fs.unlinkSync('/tmp/input.json'); } catch { /* may not exist */ }
+    try { fs.unlinkSync('/tmp/input.json'); } catch { /* ignore */ }
     log(`Received input for group: ${containerInput.groupFolder}`);
   } catch (err) {
     writeOutput({

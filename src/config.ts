@@ -16,6 +16,7 @@ export const MOUNT_ALLOWLIST_PATH = path.join(
   'mount-allowlist.json',
 );
 export const STORE_DIR = path.resolve(PROJECT_ROOT, 'store');
+export const BUSINESS_AUTH_DIR = path.resolve(PROJECT_ROOT, 'store', 'auth-business');
 export const GROUPS_DIR = path.resolve(PROJECT_ROOT, 'groups');
 export const DATA_DIR = path.resolve(PROJECT_ROOT, 'data');
 export const MAIN_GROUP_FOLDER = 'main';
@@ -35,6 +36,10 @@ export const IDLE_TIMEOUT = parseInt(
   process.env.IDLE_TIMEOUT || '1800000',
   10,
 ); // 30min default — how long to keep container alive after last result
+export const SCHEDULED_TASK_IDLE_TIMEOUT = parseInt(
+  process.env.SCHEDULED_TASK_IDLE_TIMEOUT || '30000',
+  10,
+); // 30s default — scheduled tasks close quickly to unblock the queue
 export const MAX_CONCURRENT_CONTAINERS = Math.max(
   1,
   parseInt(process.env.MAX_CONCURRENT_CONTAINERS || '5', 10) || 5,
@@ -49,7 +54,19 @@ export const TRIGGER_PATTERN = new RegExp(
   'i',
 );
 
+/**
+ * Create a trigger pattern from a per-group trigger string (e.g. "@BotName").
+ * Falls back to the global ASSISTANT_NAME if trigger is empty.
+ */
+export function createTriggerPattern(trigger: string): RegExp {
+  const t = trigger?.trim();
+  if (!t) return TRIGGER_PATTERN;
+  return new RegExp(`^${escapeRegex(t)}\\b`, 'i');
+}
+
 // Timezone for scheduled tasks (cron expressions, etc.)
 // Uses system timezone by default
 export const TIMEZONE =
   process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+

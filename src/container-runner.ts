@@ -2,7 +2,7 @@
  * Container Runner for NanoClaw
  * Spawns agent execution in Apple Container and handles IPC
  */
-import { ChildProcess, exec, spawn } from 'child_process';
+import { ChildProcess, exec, execSync, spawn } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -18,6 +18,14 @@ import {
 import { logger } from './logger.js';
 import { validateAdditionalMounts } from './mount-security.js';
 import { RegisteredGroup } from './types.js';
+import type { PluginRegistry } from './plugin-loader.js';
+
+let pluginRegistry: PluginRegistry | null = null;
+
+/** Set the plugin registry for dynamic env vars and skill mounting */
+export function setPluginRegistry(registry: PluginRegistry): void {
+  pluginRegistry = registry;
+}
 
 // Sentinel markers for robust output parsing (must match agent-runner)
 const OUTPUT_START_MARKER = '---NANOCLAW_OUTPUT_START---';
@@ -40,6 +48,7 @@ export interface ContainerInput {
   chatJid: string;
   isMain: boolean;
   isScheduledTask?: boolean;
+  model?: string;
   secrets?: Record<string, string>;
 }
 
@@ -59,10 +68,60 @@ interface VolumeMount {
 function buildVolumeMounts(
   group: RegisteredGroup,
   isMain: boolean,
+  modelOverride?: string,
 ): VolumeMount[] {
   const mounts: VolumeMount[] = [];
   const homeDir = getHomeDir();
   const projectRoot = process.cwd();
+
+  // Core agent skills — mount each subdirectory individually so plugin skill
+  // mounts can coexist (mounting the parent as read-only blocks child mounts)
+  const skillsDir = path.join(projectRoot, 'container', 'skills');
+  if (fs.existsSync(skillsDir)) {
+    for (const entry of fs.readdirSync(skillsDir)) {
+      const entryPath = path.join(skillsDir, entry);
+      if (fs.statSync(entryPath).isDirectory()) {
+        mounts.push({
+          hostPath: entryPath,
+          containerPath: `/workspace/.claude/skills/${entry}`,
+          readonly: true,
+        });
+      }
+    }
+  }
+
+  // Plugin skill directories — each plugin's skills/ mounted individually
+  if (pluginRegistry) {
+    for (const sp of pluginRegistry.getSkillPaths()) {
+      const containerSkillPath = `/workspace/.claude/skills/${sp.name}`;
+      mounts.push({
+        hostPath: sp.hostPath,
+        containerPath: containerSkillPath,
+        readonly: true,
+      });
+    }
+  }
+
+  // MCP server config — merge root .mcp.json with plugin mcp.json fragments
+  const mcpJsonFile = path.join(projectRoot, '.mcp.json');
+  if (pluginRegistry) {
+    const mergedMcp = pluginRegistry.getMergedMcpConfig(mcpJsonFile);
+    if (Object.keys(mergedMcp.mcpServers).length > 0) {
+      const mergedMcpPath = path.join(DATA_DIR, 'merged-mcp.json');
+      fs.writeFileSync(mergedMcpPath, JSON.stringify(mergedMcp, null, 2));
+      mounts.push({
+        hostPath: mergedMcpPath,
+        containerPath: '/workspace/.mcp.json',
+        readonly: true,
+      });
+    }
+  } else if (fs.existsSync(mcpJsonFile)) {
+    mounts.push({
+      hostPath: mcpJsonFile,
+      containerPath: '/workspace/.mcp.json',
+      readonly: true,
+    });
+  }
 
   if (isMain) {
     // Main gets the entire project root mounted
@@ -128,18 +187,32 @@ function buildVolumeMounts(
   const skillsSrc = path.join(process.cwd(), 'container', 'skills');
   const skillsDst = path.join(groupSessionsDir, 'skills');
   if (fs.existsSync(skillsSrc)) {
+    const copyDirRecursive = (src: string, dst: string) => {
+      fs.mkdirSync(dst, { recursive: true });
+      for (const entry of fs.readdirSync(src)) {
+        const srcPath = path.join(src, entry);
+        const dstPath = path.join(dst, entry);
+        if (fs.statSync(srcPath).isDirectory()) {
+          copyDirRecursive(srcPath, dstPath);
+        } else {
+          fs.copyFileSync(srcPath, dstPath);
+        }
+      }
+    };
     for (const skillDir of fs.readdirSync(skillsSrc)) {
       const srcDir = path.join(skillsSrc, skillDir);
       if (!fs.statSync(srcDir).isDirectory()) continue;
-      const dstDir = path.join(skillsDst, skillDir);
-      fs.mkdirSync(dstDir, { recursive: true });
-      for (const file of fs.readdirSync(srcDir)) {
-        const srcFile = path.join(srcDir, file);
-        const dstFile = path.join(dstDir, file);
-        fs.copyFileSync(srcFile, dstFile);
-      }
+      copyDirRecursive(srcDir, path.join(skillsDst, skillDir));
     }
   }
+  // Sync host credentials for automatic OAuth token refresh
+  // Claude Code SDK reads ~/.claude/.credentials.json natively and handles refresh
+  const hostCredsFile = path.join(getHomeDir(), '.claude', '.credentials.json');
+  if (fs.existsSync(hostCredsFile)) {
+    const destCredsFile = path.join(groupSessionsDir, '.credentials.json');
+    fs.copyFileSync(hostCredsFile, destCredsFile);
+  }
+
   mounts.push({
     hostPath: groupSessionsDir,
     containerPath: '/home/node/.claude',
@@ -158,8 +231,77 @@ function buildVolumeMounts(
     readonly: false,
   });
 
+  // Environment file directory (workaround for Apple Container -i env var bug)
+  // Only expose specific auth variables needed by Claude Code, not the entire .env
+  const envDir = path.join(DATA_DIR, 'env');
+  fs.mkdirSync(envDir, { recursive: true });
+  const envFile = path.join(projectRoot, '.env');
+  if (fs.existsSync(envFile)) {
+    const envContent = fs.readFileSync(envFile, 'utf-8');
+    const allowedVars = pluginRegistry
+      ? pluginRegistry.getContainerEnvVars()
+      : ['ANTHROPIC_API_KEY', 'ASSISTANT_NAME', 'CLAUDE_MODEL', 'BUSINESS_DM_TARGET_JID'];
+    const filteredLines = envContent.split('\n').filter((line) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) return false;
+      return allowedVars.some((v) => trimmed.startsWith(`${v}=`));
+    });
+
+    // Override CLAUDE_MODEL from store file if it exists (set via /set-model skill)
+    const modelFile = path.join(projectRoot, 'store', 'claude-model');
+    if (fs.existsSync(modelFile)) {
+      const model = fs.readFileSync(modelFile, 'utf-8').trim();
+      if (model) {
+        const idx = filteredLines.findIndex((l) => l.trim().startsWith('CLAUDE_MODEL='));
+        if (idx >= 0) filteredLines[idx] = `CLAUDE_MODEL=${model}`;
+        else filteredLines.push(`CLAUDE_MODEL=${model}`);
+      }
+    }
+
+    // Per-task model override takes highest priority
+    if (modelOverride) {
+      const idx = filteredLines.findIndex((l) => l.trim().startsWith('CLAUDE_MODEL='));
+      if (idx >= 0) filteredLines[idx] = `CLAUDE_MODEL=${modelOverride}`;
+      else filteredLines.push(`CLAUDE_MODEL=${modelOverride}`);
+    }
+
+    // Quote env values to prevent shell injection (# truncation, $() execution, etc.)
+    const quotedLines = filteredLines.map((line) => {
+      const eqIdx = line.indexOf('=');
+      if (eqIdx < 0) return line;
+      const key = line.slice(0, eqIdx);
+      const value = line.slice(eqIdx + 1);
+      const escaped = value.replace(/'/g, "'\\''");
+      return `${key}='${escaped}'`;
+    });
+
+    if (quotedLines.length > 0) {
+      fs.writeFileSync(
+        path.join(envDir, 'env'),
+        quotedLines.join('\n') + '\n',
+      );
+      mounts.push({
+        hostPath: envDir,
+        containerPath: '/workspace/env-dir',
+        readonly: true,
+      });
+    }
+  }
+
+  // gog CLI config (Google OAuth credentials + tokens) — shared across all containers
+  // Uses data/gogcli/ copy (chowned to UID 1000) rather than ~/.config/gogcli/ (owned by root)
+  const gogConfigDir = path.join(DATA_DIR, 'gogcli');
+  if (fs.existsSync(gogConfigDir)) {
+    mounts.push({
+      hostPath: gogConfigDir,
+      containerPath: '/home/node/.config/gogcli',
+      readonly: true,
+    });
+  }
+
+
   // Mount agent-runner source from host — recompiled on container startup.
-  // Bypasses Apple Container's sticky build cache for code changes.
+  // Allows code changes without rebuilding the Docker image.
   const agentRunnerSrc = path.join(projectRoot, 'container', 'agent-runner', 'src');
   mounts.push({
     hostPath: agentRunnerSrc,
@@ -175,6 +317,18 @@ function buildVolumeMounts(
       isMain,
     );
     mounts.push(...validatedMounts);
+  }
+
+  // Docker bind mounts preserve host ownership; ensure writable mounts
+  // are accessible by the container's node user (UID 1000)
+  for (const mount of mounts) {
+    if (!mount.readonly) {
+      try {
+        execSync(`chown -R 1000:1000 "${mount.hostPath}"`, { stdio: 'pipe' });
+      } catch {
+        // Non-fatal: may already be correct or path may not exist yet
+      }
+    }
   }
 
   return mounts;
@@ -213,7 +367,9 @@ function readSecrets(): Record<string, string> {
 }
 
 function buildContainerArgs(mounts: VolumeMount[], containerName: string): string[] {
-  const args: string[] = ['run', '-i', '--rm', '--name', containerName];
+  const args: string[] = ['run', '-i', '--rm', '--name', containerName,
+    '--cap-add=SYS_PTRACE',  // Chromium's crashpad handler needs ptrace
+  ];
 
   // Apple Container: --mount for readonly, -v for read-write
   for (const mount of mounts) {
@@ -243,7 +399,7 @@ export async function runContainerAgent(
   const groupDir = path.join(GROUPS_DIR, group.folder);
   fs.mkdirSync(groupDir, { recursive: true });
 
-  const mounts = buildVolumeMounts(group, input.isMain);
+  const mounts = buildVolumeMounts(group, input.isMain, input.model);
   const safeName = group.folder.replace(/[^a-zA-Z0-9-]/g, '-');
   const containerName = `nanoclaw-${safeName}-${Date.now()}`;
   const containerArgs = buildContainerArgs(mounts, containerName);
@@ -261,12 +417,19 @@ export async function runContainerAgent(
     'Container mount configuration',
   );
 
+  // Determine effective model for logging
+  const storeModelFile = path.join(process.cwd(), 'store', 'claude-model');
+  const effectiveModel = input.model
+    || (fs.existsSync(storeModelFile) && fs.readFileSync(storeModelFile, 'utf-8').trim())
+    || 'sdk-default';
+
   logger.info(
     {
       group: group.name,
       containerName,
       mountCount: mounts.length,
       isMain: input.isMain,
+      model: effectiveModel,
     },
     'Spawning container agent',
   );
@@ -275,7 +438,7 @@ export async function runContainerAgent(
   fs.mkdirSync(logsDir, { recursive: true });
 
   return new Promise((resolve) => {
-    const container = spawn('container', containerArgs, {
+    const container = spawn('docker', containerArgs, {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
@@ -382,7 +545,8 @@ export async function runContainerAgent(
     const killOnTimeout = () => {
       timedOut = true;
       logger.error({ group: group.name, containerName }, 'Container timeout, stopping gracefully');
-      exec(`container stop ${containerName}`, { timeout: 15000 }, (err) => {
+      // Graceful stop: sends SIGTERM, waits, then SIGKILL — lets --rm fire
+      exec(`docker stop ${containerName}`, { timeout: 15000 }, (err) => {
         if (err) {
           logger.warn({ group: group.name, containerName, err }, 'Graceful stop failed, force killing');
           container.kill('SIGKILL');
@@ -401,6 +565,24 @@ export async function runContainerAgent(
     container.on('close', (code) => {
       clearTimeout(timeout);
       const duration = Date.now() - startTime;
+
+      // Sync refreshed OAuth credentials back to host
+      // If SDK refreshed the token inside the container, propagate to host
+      const groupCredsFile = path.join(
+        DATA_DIR, 'sessions', group.folder, '.claude', '.credentials.json',
+      );
+      const hostCreds = path.join(getHomeDir(), '.claude', '.credentials.json');
+      if (fs.existsSync(groupCredsFile) && fs.existsSync(hostCreds)) {
+        try {
+          const containerCreds = JSON.parse(fs.readFileSync(groupCredsFile, 'utf-8'));
+          const currentCreds = JSON.parse(fs.readFileSync(hostCreds, 'utf-8'));
+          if (containerCreds.claudeAiOauth?.expiresAt > (currentCreds.claudeAiOauth?.expiresAt || 0)) {
+            fs.writeFileSync(hostCreds, JSON.stringify(containerCreds), { mode: 0o600 });
+            logger.info({ group: group.name }, 'Synced refreshed OAuth credentials back to host');
+          }
+        } catch { /* non-fatal */ }
+      }
+
 
       if (timedOut) {
         const ts = new Date().toISOString().replace(/[:.]/g, '-');
@@ -612,6 +794,7 @@ export function writeTasksSnapshot(
     schedule_value: string;
     status: string;
     next_run: string | null;
+    model?: string | null;
   }>,
 ): void {
   // Write filtered tasks to the group's IPC directory

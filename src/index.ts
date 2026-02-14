@@ -4,11 +4,11 @@ import path from 'path';
 
 import {
   ASSISTANT_NAME,
+  createTriggerPattern,
   DATA_DIR,
   IDLE_TIMEOUT,
   MAIN_GROUP_FOLDER,
   POLL_INTERVAL,
-  TRIGGER_PATTERN,
 } from './config.js';
 import { WhatsAppChannel } from './channels/whatsapp.js';
 import {
@@ -31,6 +31,7 @@ import {
   setSession,
   storeChatMetadata,
   storeMessage,
+  storeWebhookMessage,
 } from './db.js';
 import { GroupQueue } from './group-queue.js';
 import { startIpcWatcher } from './ipc.js';
@@ -38,6 +39,9 @@ import { formatMessages, formatOutbound } from './router.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
+import { loadPlugins, PluginRegistry } from './plugin-loader.js';
+import { setPluginRegistry } from './container-runner.js';
+import type { PluginContext } from './plugin-types.js';
 
 // Re-export for backwards compatibility during refactor
 export { escapeXml, formatMessages } from './router.js';
@@ -48,8 +52,20 @@ let registeredGroups: Record<string, RegisteredGroup> = {};
 let lastAgentTimestamp: Record<string, string> = {};
 let messageLoopRunning = false;
 
+// Track consecutive errors per JID to prevent error message storms.
+// Only the first error sends a notification; subsequent errors are silent
+// until the chat succeeds or the cursor is advanced past the failing batch.
+const consecutiveErrors: Record<string, number> = {};
+const MAX_CONSECUTIVE_ERRORS = 3;
+
+// Track processed message IDs to deduplicate when using >= timestamp comparison.
+// Cleared when the timestamp advances past the tracked window.
+const processedIds = new Set<string>();
+let processedIdsTimestamp = '';
+
 let whatsapp: WhatsAppChannel;
 const queue = new GroupQueue();
+let plugins: PluginRegistry;
 
 function loadState(): void {
   lastTimestamp = getRouterState('last_timestamp') || '';
@@ -134,8 +150,9 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   // For non-main groups, check if trigger is required and present
   if (!isMainGroup && group.requiresTrigger !== false) {
+    const pattern = createTriggerPattern(group.trigger);
     const hasTrigger = missedMessages.some((m) =>
-      TRIGGER_PATTERN.test(m.content.trim()),
+      pattern.test(m.content.trim()),
     );
     if (!hasTrigger) return true;
   }
@@ -165,47 +182,88 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     }, IDLE_TIMEOUT);
   };
 
-  await whatsapp.setTyping(chatJid, true);
+  // Heartbeat typing: only show "typing" when agent is producing output
+  let typingActive = false;
+  let typingTimer: ReturnType<typeof setTimeout> | null = null;
+  const TYPING_PAUSE_MS = 5000;
+
+  const pulseTyping = async () => {
+    if (!typingActive) {
+      typingActive = true;
+      await whatsapp.setTyping(chatJid, true);
+    }
+    if (typingTimer) clearTimeout(typingTimer);
+    typingTimer = setTimeout(async () => {
+      typingActive = false;
+      await whatsapp.setTyping(chatJid, false);
+    }, TYPING_PAUSE_MS);
+  };
+
   let hadError = false;
   let outputSentToUser = false;
 
   const output = await runAgent(group, prompt, chatJid, async (result) => {
     // Streaming output callback — called for each agent result
+    if (result.status === 'error') {
+      hadError = true;
+      return;
+    }
     if (result.result) {
       const raw = typeof result.result === 'string' ? result.result : JSON.stringify(result.result);
       // Strip <internal>...</internal> blocks — agent uses these for internal reasoning
       const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
       logger.info({ group: group.name }, `Agent output: ${raw.slice(0, 200)}`);
       if (text) {
+        await pulseTyping();
         await whatsapp.sendMessage(chatJid, `${ASSISTANT_NAME}: ${text}`);
         outputSentToUser = true;
       }
       // Only reset idle timer on actual results, not session-update markers (result: null)
       resetIdleTimer();
     }
-
-    if (result.status === 'error') {
-      hadError = true;
-    }
   });
 
-  await whatsapp.setTyping(chatJid, false);
+  if (typingTimer) clearTimeout(typingTimer);
+  if (typingActive) await whatsapp.setTyping(chatJid, false);
   if (idleTimer) clearTimeout(idleTimer);
 
   if (output === 'error' || hadError) {
     // If we already sent output to the user, don't roll back the cursor —
     // the user got their response and re-processing would send duplicates.
     if (outputSentToUser) {
+      consecutiveErrors[chatJid] = 0;
       logger.warn({ group: group.name }, 'Agent error after output was sent, skipping cursor rollback to prevent duplicates');
       return true;
     }
+
+    const errorCount = (consecutiveErrors[chatJid] || 0) + 1;
+    consecutiveErrors[chatJid] = errorCount;
+
+    // Only send error notification on the first consecutive failure
+    if (errorCount === 1) {
+      await whatsapp.sendMessage(chatJid, `${ASSISTANT_NAME}: [Error] Something went wrong processing your message. Will retry on next message.`).catch(() => {});
+    }
+
+    if (errorCount >= MAX_CONSECUTIVE_ERRORS) {
+      // Too many consecutive failures — advance cursor to prevent a permanently
+      // stuck queue where every future message re-triggers the same failing batch.
+      logger.error(
+        { group: group.name, errorCount },
+        'Max consecutive errors reached, advancing cursor past failing messages',
+      );
+      // Cursor already advanced above; don't roll back.
+      consecutiveErrors[chatJid] = 0;
+      return false;
+    }
+
     // Roll back cursor so retries can re-process these messages
     lastAgentTimestamp[chatJid] = previousCursor;
     saveState();
-    logger.warn({ group: group.name }, 'Agent error, rolled back message cursor for retry');
+    logger.warn({ group: group.name, errorCount }, 'Agent error, rolled back message cursor for retry');
     return false;
   }
 
+  consecutiveErrors[chatJid] = 0;
   return true;
 }
 
@@ -231,6 +289,7 @@ async function runAgent(
       schedule_value: t.schedule_value,
       status: t.status,
       next_run: t.next_run,
+      model: t.model,
     })),
   );
 
@@ -300,14 +359,26 @@ async function startMessageLoop(): Promise<void> {
   while (true) {
     try {
       const jids = Object.keys(registeredGroups);
-      const { messages, newTimestamp } = getNewMessages(
+      const { messages: rawMessages, newTimestamp } = getNewMessages(
         jids,
         lastTimestamp,
         ASSISTANT_NAME,
       );
 
+      // Filter out already-processed messages (dedup for same-second timestamps)
+      const messages = rawMessages.filter((m) => !processedIds.has(m.id));
+
       if (messages.length > 0) {
         logger.info({ count: messages.length }, 'New messages');
+
+        // Track processed IDs; clear set when timestamp advances
+        if (newTimestamp > processedIdsTimestamp) {
+          processedIds.clear();
+          processedIdsTimestamp = newTimestamp;
+        }
+        for (const m of rawMessages) {
+          processedIds.add(m.id);
+        }
 
         // Advance the "seen" cursor for all messages immediately
         lastTimestamp = newTimestamp;
@@ -335,8 +406,9 @@ async function startMessageLoop(): Promise<void> {
           // Non-trigger messages accumulate in DB and get pulled as
           // context when a trigger eventually arrives.
           if (needsTrigger) {
+            const pattern = createTriggerPattern(group.trigger);
             const hasTrigger = groupMessages.some((m) =>
-              TRIGGER_PATTERN.test(m.content.trim()),
+              pattern.test(m.content.trim()),
             );
             if (!hasTrigger) continue;
           }
@@ -393,59 +465,29 @@ function recoverPendingMessages(): void {
   }
 }
 
-function ensureContainerSystemRunning(): void {
+function ensureDockerRunning(): void {
   try {
-    execSync('container system status', { stdio: 'pipe' });
-    logger.debug('Apple Container system already running');
-  } catch {
-    logger.info('Starting Apple Container system...');
-    try {
-      execSync('container system start', { stdio: 'pipe', timeout: 30000 });
-      logger.info('Apple Container system started');
-    } catch (err) {
-      logger.error({ err }, 'Failed to start Apple Container system');
-      console.error(
-        '\n╔════════════════════════════════════════════════════════════════╗',
-      );
-      console.error(
-        '║  FATAL: Apple Container system failed to start                 ║',
-      );
-      console.error(
-        '║                                                                ║',
-      );
-      console.error(
-        '║  Agents cannot run without Apple Container. To fix:           ║',
-      );
-      console.error(
-        '║  1. Install from: https://github.com/apple/container/releases ║',
-      );
-      console.error(
-        '║  2. Run: container system start                               ║',
-      );
-      console.error(
-        '║  3. Restart NanoClaw                                          ║',
-      );
-      console.error(
-        '╚════════════════════════════════════════════════════════════════╝\n',
-      );
-      throw new Error('Apple Container system is required but failed to start');
-    }
+    execSync('docker info', { stdio: 'pipe', timeout: 10000 });
+    logger.debug('Docker daemon running');
+  } catch (err) {
+    logger.error({ err }, 'Docker daemon not available');
+    throw new Error('Docker is required but not running. Start Docker and try again.');
   }
 
   // Kill and clean up orphaned NanoClaw containers from previous runs
   try {
-    const output = execSync('container ls --format json', {
+    const output = execSync('docker ps --format "{{.Names}}" --filter name=nanoclaw-', {
       stdio: ['pipe', 'pipe', 'pipe'],
       encoding: 'utf-8',
     });
-    const containers: { status: string; configuration: { id: string } }[] = JSON.parse(output || '[]');
-    const orphans = containers
-      .filter((c) => c.status === 'running' && c.configuration.id.startsWith('nanoclaw-'))
-      .map((c) => c.configuration.id);
+    const orphans = output.trim().split('\n').filter(Boolean);
     for (const name of orphans) {
       try {
-        execSync(`container stop ${name}`, { stdio: 'pipe' });
+        execSync(`docker stop ${name}`, { stdio: 'pipe', timeout: 15000 });
       } catch { /* already stopped */ }
+      try {
+        execSync(`docker rm ${name}`, { stdio: 'pipe', timeout: 5000 });
+      } catch { /* already removed */ }
     }
     if (orphans.length > 0) {
       logger.info({ count: orphans.length, names: orphans }, 'Stopped orphaned containers');
@@ -456,14 +498,19 @@ function ensureContainerSystemRunning(): void {
 }
 
 async function main(): Promise<void> {
-  ensureContainerSystemRunning();
+  ensureDockerRunning();
   initDatabase();
   logger.info('Database initialized');
   loadState();
 
+  // Load plugins (env vars, hooks, channels, MCP configs)
+  plugins = await loadPlugins();
+  setPluginRegistry(plugins);
+
   // Graceful shutdown handlers
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'Shutdown signal received');
+    await plugins.shutdown();
     await queue.shutdown(10000);
     await whatsapp.disconnect();
     process.exit(0);
@@ -473,7 +520,10 @@ async function main(): Promise<void> {
 
   // Create WhatsApp channel
   whatsapp = new WhatsAppChannel({
-    onMessage: (chatJid, msg) => storeMessage(msg),
+    onMessage: async (chatJid, msg) => {
+      const transformed = await plugins.runInboundHooks(msg, 'whatsapp');
+      storeMessage(transformed);
+    },
     onChatMetadata: (chatJid, timestamp) => storeChatMetadata(chatJid, timestamp),
     registeredGroups: () => registeredGroups,
   });
@@ -491,6 +541,7 @@ async function main(): Promise<void> {
       const text = formatOutbound(whatsapp, rawText);
       if (text) await whatsapp.sendMessage(jid, text);
     },
+    assistantName: ASSISTANT_NAME,
   });
   startIpcWatcher({
     sendMessage: (jid, text) => whatsapp.sendMessage(jid, text),
@@ -500,6 +551,24 @@ async function main(): Promise<void> {
     getAvailableGroups,
     writeGroupsSnapshot: (gf, im, ag, rj) => writeGroupsSnapshot(gf, im, ag, rj),
   });
+  // Start plugin channels and lifecycle
+  for (const channel of plugins.channels) {
+    await channel.connect();
+  }
+  const pluginCtx: PluginContext = {
+    insertMessage: storeWebhookMessage,
+    sendMessage: (jid, text) => whatsapp.sendMessage(jid, text),
+    getRegisteredGroups: () => registeredGroups,
+    getMainChannelJid: () => {
+      const mainEntry = Object.entries(registeredGroups).find(
+        ([, g]) => g.folder === MAIN_GROUP_FOLDER,
+      );
+      return mainEntry ? mainEntry[0] : null;
+    },
+    logger,
+  };
+  await plugins.startup(pluginCtx);
+
   queue.setProcessMessagesFn(processGroupMessages);
   recoverPendingMessages();
   startMessageLoop();

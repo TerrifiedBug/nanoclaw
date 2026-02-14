@@ -1,4 +1,3 @@
-import { exec } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
@@ -6,11 +5,12 @@ import makeWASocket, {
   Browsers,
   DisconnectReason,
   WASocket,
+  downloadMediaMessage,
   makeCacheableSignalKeyStore,
   useMultiFileAuthState,
 } from '@whiskeysockets/baileys';
 
-import { STORE_DIR } from '../config.js';
+import { BUSINESS_AUTH_DIR, GROUPS_DIR, STORE_DIR } from '../config.js';
 import {
   getLastGroupSync,
   setLastGroupSync,
@@ -51,7 +51,10 @@ export class WhatsAppChannel implements Channel {
   }
 
   private async connectInternal(onFirstOpen?: () => void): Promise<void> {
-    const authDir = path.join(STORE_DIR, 'auth');
+    // Use business auth state if it exists, otherwise fall back to personal
+    const authDir = fs.existsSync(BUSINESS_AUTH_DIR)
+      ? BUSINESS_AUTH_DIR
+      : path.join(STORE_DIR, 'auth');
     fs.mkdirSync(authDir, { recursive: true });
 
     const { state, saveCreds } = await useMultiFileAuthState(authDir);
@@ -63,6 +66,7 @@ export class WhatsAppChannel implements Channel {
       },
       printQRInTerminal: false,
       logger,
+      syncFullHistory: false,
       browser: Browsers.macOS('Chrome'),
     });
 
@@ -70,12 +74,7 @@ export class WhatsAppChannel implements Channel {
       const { connection, lastDisconnect, qr } = update;
 
       if (qr) {
-        const msg =
-          'WhatsApp authentication required. Run /setup in Claude Code.';
-        logger.error(msg);
-        exec(
-          `osascript -e 'display notification "${msg}" with title "NanoClaw" sound name "Basso"'`,
-        );
+        logger.error('WhatsApp authentication required. Run: npm run auth');
         setTimeout(() => process.exit(1), 1000);
       }
 
@@ -116,6 +115,11 @@ export class WhatsAppChannel implements Channel {
           }
         }
 
+        // Announce online presence
+        this.sock.sendPresenceUpdate('available').catch((err) =>
+          logger.debug({ err }, 'Failed to send initial presence'),
+        );
+
         // Flush any messages queued while disconnected
         this.flushOutgoingQueue().catch((err) =>
           logger.error({ err }, 'Failed to flush outgoing queue'),
@@ -146,6 +150,7 @@ export class WhatsAppChannel implements Channel {
     this.sock.ev.on('creds.update', saveCreds);
 
     this.sock.ev.on('messages.upsert', async ({ messages }) => {
+      logger.debug({ count: messages.length }, 'messages.upsert received');
       for (const msg of messages) {
         if (!msg.message) continue;
         const rawJid = msg.key.remoteJid;
@@ -153,6 +158,7 @@ export class WhatsAppChannel implements Channel {
 
         // Translate LID JID to phone JID if applicable
         const chatJid = await this.translateJid(rawJid);
+        logger.debug({ rawJid, chatJid, fromMe: msg.key.fromMe }, 'Processing message');
 
         const timestamp = new Date(
           Number(msg.messageTimestamp) * 1000,
@@ -164,7 +170,7 @@ export class WhatsAppChannel implements Channel {
         // Only deliver full message for registered groups
         const groups = this.opts.registeredGroups();
         if (groups[chatJid]) {
-          const content =
+          let content =
             msg.message?.conversation ||
             msg.message?.extendedTextMessage?.text ||
             msg.message?.imageMessage?.caption ||
@@ -172,6 +178,37 @@ export class WhatsAppChannel implements Channel {
             '';
           const sender = msg.key.participant || msg.key.remoteJid || '';
           const senderName = msg.pushName || sender.split('@')[0];
+
+          // Download media (images, videos, documents, audio) if present
+          const hasMedia = msg.message?.imageMessage || msg.message?.videoMessage ||
+            msg.message?.documentMessage || msg.message?.audioMessage;
+          let audioBuffer: Buffer | undefined;
+          let mediaType: string | undefined;
+          let mediaPath: string | undefined;
+          if (hasMedia) {
+            const isVoiceNote = msg.message?.audioMessage?.ptt === true;
+            const media = await this.downloadMedia(msg, groups[chatJid].folder);
+            if (media) {
+              mediaPath = media.path;
+              if (isVoiceNote) {
+                // For voice notes, download raw buffer for plugin transcription
+                mediaType = 'voice';
+                try {
+                  const buf = await downloadMediaMessage(msg, 'buffer', {});
+                  if (buf && (buf as Buffer).length > 0) {
+                    audioBuffer = buf as Buffer;
+                  }
+                } catch {
+                  // Buffer download failed; media file still saved
+                }
+              } else {
+                mediaType = media.type;
+                content = content
+                  ? `${content}\n[${media.type}: ${media.path}]`
+                  : `[${media.type}: ${media.path}]`;
+              }
+            }
+          }
 
           this.opts.onMessage(chatJid, {
             id: msg.key.id || '',
@@ -181,7 +218,15 @@ export class WhatsAppChannel implements Channel {
             content,
             timestamp,
             is_from_me: msg.key.fromMe || false,
+            audioBuffer,
+            mediaType,
+            mediaPath,
           });
+        }
+
+        // Send read receipt for incoming messages
+        if (!msg.key.fromMe) {
+          this.sock.readMessages([msg.key]).catch(() => {});
         }
       }
     });
@@ -209,6 +254,49 @@ export class WhatsAppChannel implements Channel {
 
   ownsJid(jid: string): boolean {
     return jid.endsWith('@g.us') || jid.endsWith('@s.whatsapp.net');
+  }
+
+  /**
+   * Download media from a WhatsApp message and save to the group's media directory.
+   * Returns a container-relative path reference, or null if no media or download failed.
+   */
+  private async downloadMedia(
+    msg: Parameters<typeof downloadMediaMessage>[0],
+    groupFolder: string,
+  ): Promise<{ path: string; type: string } | null> {
+    const mediaTypes: Array<{ key: string; type: string; ext: string }> = [
+      { key: 'imageMessage', type: 'image', ext: 'jpg' },
+      { key: 'videoMessage', type: 'video', ext: 'mp4' },
+      { key: 'documentMessage', type: 'document', ext: '' },
+      { key: 'audioMessage', type: 'audio', ext: 'ogg' },
+    ];
+
+    for (const mt of mediaTypes) {
+      const mediaMsg = (msg.message as Record<string, any>)?.[mt.key];
+      if (!mediaMsg) continue;
+
+      try {
+        const buffer = await downloadMediaMessage(msg, 'buffer', {});
+        const ext = mt.ext || (mediaMsg.fileName as string)?.split('.').pop() || 'bin';
+        const filename = `${msg.key.id}.${ext}`;
+        const mediaDir = path.join(GROUPS_DIR, groupFolder, 'media');
+        fs.mkdirSync(mediaDir, { recursive: true });
+        const filePath = path.join(mediaDir, filename);
+        fs.writeFileSync(filePath, buffer);
+
+        logger.info({ groupFolder, type: mt.type, filename }, 'Media downloaded');
+        return { path: `/workspace/group/media/${filename}`, type: mt.type };
+      } catch (err) {
+        logger.warn({ err, msgId: msg.key.id, type: mt.type }, 'Failed to download media');
+      }
+    }
+    return null;
+  }
+
+  async deleteMessage(jid: string, messageId: string): Promise<void> {
+    await this.sock.sendMessage(jid, {
+      delete: { remoteJid: jid, id: messageId, fromMe: true },
+    });
   }
 
   async disconnect(): Promise<void> {
@@ -269,21 +357,26 @@ export class WhatsAppChannel implements Channel {
     // Check local cache first
     const cached = this.lidToPhoneMap[lidUser];
     if (cached) {
-      logger.debug({ lidJid: jid, phoneJid: cached }, 'Translated LID to phone JID (cached)');
+      logger.debug({ lidJid: jid, phoneJid: cached }, 'Translated LID from cache');
       return cached;
     }
 
-    // Query Baileys' signal repository for the mapping
+    // Query Baileys' signal repository for the LID→PN mapping
     try {
-      const pn = await this.sock.signalRepository?.lidMapping?.getPNForLID(jid);
-      if (pn) {
-        const phoneJid = `${pn.split('@')[0].split(':')[0]}@s.whatsapp.net`;
-        this.lidToPhoneMap[lidUser] = phoneJid;
-        logger.info({ lidJid: jid, phoneJid }, 'Translated LID to phone JID (signalRepository)');
-        return phoneJid;
+      const repo = (this.sock as any).signalRepository;
+      if (repo?.lidMapping?.getPNForLID) {
+        const pnJid = await repo.lidMapping.getPNForLID(jid);
+        if (pnJid) {
+          // getPNForLID returns "phone:device@s.whatsapp.net" — strip device suffix
+          const phoneUser = pnJid.split(':')[0];
+          const phoneJid = `${phoneUser}@s.whatsapp.net`;
+          this.lidToPhoneMap[lidUser] = phoneJid;
+          logger.info({ lidJid: jid, phoneJid }, 'Translated LID via signal repository');
+          return phoneJid;
+        }
       }
     } catch (err) {
-      logger.debug({ err, jid }, 'Failed to resolve LID via signalRepository');
+      logger.warn({ err, jid }, 'Failed to translate LID via signal repository');
     }
 
     return jid;

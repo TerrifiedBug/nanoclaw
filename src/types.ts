@@ -49,6 +49,12 @@ export interface NewMessage {
   content: string;
   timestamp: string;
   is_from_me?: boolean;
+  /** Raw audio buffer for voice notes (consumed by plugins) */
+  audioBuffer?: Buffer;
+  /** Media type hint: 'voice', 'image', 'video', 'audio', 'document' */
+  mediaType?: string;
+  /** Host path where media file was saved */
+  mediaPath?: string;
 }
 
 export interface ScheduledTask {
@@ -59,6 +65,7 @@ export interface ScheduledTask {
   schedule_type: 'cron' | 'interval' | 'once';
   schedule_value: string;
   context_mode: 'group' | 'isolated';
+  model?: string | null;
   next_run: string | null;
   last_run: string | null;
   last_result: string | null;
@@ -93,7 +100,7 @@ export interface Channel {
 }
 
 // Callback type that channels use to deliver inbound messages
-export type OnInboundMessage = (chatJid: string, message: NewMessage) => void;
+export type OnInboundMessage = (chatJid: string, message: NewMessage) => void | Promise<void>;
 
 // Callback for chat metadata discovery.
 // name is optional — channels that deliver names inline (Telegram) pass it here;
