@@ -2,7 +2,7 @@
  * Container Runner for NanoClaw
  * Spawns agent execution in Apple Container and handles IPC
  */
-import { ChildProcess, exec, execSync, spawn } from 'child_process';
+import { ChildProcess, ChildProcessByStdio } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -15,6 +15,7 @@ import {
   GROUPS_DIR,
   IDLE_TIMEOUT,
 } from './config.js';
+import * as containerRuntime from './container-runtime.js';
 import { logger } from './logger.js';
 import { validateAdditionalMounts } from './mount-security.js';
 import { RegisteredGroup } from './types.js';
@@ -319,18 +320,6 @@ function buildVolumeMounts(
     mounts.push(...validatedMounts);
   }
 
-  // Docker bind mounts preserve host ownership; ensure writable mounts
-  // are accessible by the container's node user (UID 1000)
-  for (const mount of mounts) {
-    if (!mount.readonly) {
-      try {
-        execSync(`chown -R 1000:1000 "${mount.hostPath}"`, { stdio: 'pipe' });
-      } catch {
-        // Non-fatal: may already be correct or path may not exist yet
-      }
-    }
-  }
-
   return mounts;
 }
 
@@ -367,11 +356,11 @@ function readSecrets(): Record<string, string> {
 }
 
 function buildContainerArgs(mounts: VolumeMount[], containerName: string): string[] {
-  const args: string[] = ['run', '-i', '--rm', '--name', containerName,
-    '--cap-add=SYS_PTRACE',  // Chromium's crashpad handler needs ptrace
+  const args: string[] = [
+    'run', '-i', '--rm', '--name', containerName,
+    ...containerRuntime.extraRunArgs(),
   ];
 
-  // Apple Container: --mount for readonly, -v for read-write
   for (const mount of mounts) {
     if (mount.readonly) {
       args.push(
@@ -400,6 +389,14 @@ export async function runContainerAgent(
   fs.mkdirSync(groupDir, { recursive: true });
 
   const mounts = buildVolumeMounts(group, input.isMain, input.model);
+
+  // Fix permissions on writable mounts (Docker only — Apple Container handles this natively)
+  for (const mount of mounts) {
+    if (!mount.readonly) {
+      containerRuntime.fixMountPermissions(mount.hostPath);
+    }
+  }
+
   const safeName = group.folder.replace(/[^a-zA-Z0-9-]/g, '-');
   const containerName = `nanoclaw-${safeName}-${Date.now()}`;
   const containerArgs = buildContainerArgs(mounts, containerName);
@@ -438,9 +435,7 @@ export async function runContainerAgent(
   fs.mkdirSync(logsDir, { recursive: true });
 
   return new Promise((resolve) => {
-    const container = spawn('docker', containerArgs, {
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
+    const container = containerRuntime.run(containerArgs);
 
     onProcess(container, containerName);
 
@@ -545,8 +540,7 @@ export async function runContainerAgent(
     const killOnTimeout = () => {
       timedOut = true;
       logger.error({ group: group.name, containerName }, 'Container timeout, stopping gracefully');
-      // Graceful stop: sends SIGTERM, waits, then SIGKILL — lets --rm fire
-      exec(`docker stop ${containerName}`, { timeout: 15000 }, (err) => {
+      containerRuntime.stop(containerName, (err) => {
         if (err) {
           logger.warn({ group: group.name, containerName, err }, 'Graceful stop failed, force killing');
           container.kill('SIGKILL');

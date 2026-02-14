@@ -1,4 +1,3 @@
-import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
@@ -11,6 +10,7 @@ import {
   POLL_INTERVAL,
 } from './config.js';
 import { WhatsAppChannel } from './channels/whatsapp.js';
+import { ensureRunning as ensureContainerRuntime } from './container-runtime.js';
 import {
   ContainerOutput,
   runContainerAgent,
@@ -465,40 +465,11 @@ function recoverPendingMessages(): void {
   }
 }
 
-function ensureDockerRunning(): void {
-  try {
-    execSync('docker info', { stdio: 'pipe', timeout: 10000 });
-    logger.debug('Docker daemon running');
-  } catch (err) {
-    logger.error({ err }, 'Docker daemon not available');
-    throw new Error('Docker is required but not running. Start Docker and try again.');
-  }
-
-  // Kill and clean up orphaned NanoClaw containers from previous runs
-  try {
-    const output = execSync('docker ps --format "{{.Names}}" --filter name=nanoclaw-', {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      encoding: 'utf-8',
-    });
-    const orphans = output.trim().split('\n').filter(Boolean);
-    for (const name of orphans) {
-      try {
-        execSync(`docker stop ${name}`, { stdio: 'pipe', timeout: 15000 });
-      } catch { /* already stopped */ }
-      try {
-        execSync(`docker rm ${name}`, { stdio: 'pipe', timeout: 5000 });
-      } catch { /* already removed */ }
-    }
-    if (orphans.length > 0) {
-      logger.info({ count: orphans.length, names: orphans }, 'Stopped orphaned containers');
-    }
-  } catch (err) {
-    logger.warn({ err }, 'Failed to clean up orphaned containers');
-  }
-}
+// Container runtime startup is handled by container-runtime.ts (ensureRunning)
+// which auto-detects Docker or Apple Container and cleans up orphans.
 
 async function main(): Promise<void> {
-  ensureDockerRunning();
+  ensureContainerRuntime();
   initDatabase();
   logger.info('Database initialized');
   loadState();
