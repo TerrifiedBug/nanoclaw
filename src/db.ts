@@ -242,23 +242,24 @@ export function storeMessageDirect(msg: {
 }
 
 /**
- * Store a webhook-originated message (plain strings, no Baileys dependency).
- * Inserts into the messages table and updates chat metadata so the
- * polling loop picks it up like any other message.
+ * Store an externally-originated message (plain strings, no Baileys dependency).
+ * Used by plugins (webhooks, channels, etc.) to inject messages into the
+ * message store so the polling loop picks them up like any other message.
  */
-export function storeWebhookMessage(
+export function insertExternalMessage(
   chatJid: string,
   messageId: string,
-  source: string,
+  sender: string,
+  senderName: string,
   text: string,
 ): void {
   const timestamp = new Date().toISOString();
 
-  storeChatMetadata(chatJid, timestamp, source);
+  storeChatMetadata(chatJid, timestamp, senderName);
 
   db.prepare(
     `INSERT OR REPLACE INTO messages (id, chat_jid, sender, sender_name, content, timestamp, is_from_me) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-  ).run(messageId, chatJid, `webhook:${source}`, source, text, timestamp, 0);
+  ).run(messageId, chatJid, sender, senderName, text, timestamp, 0);
 }
 
 /**

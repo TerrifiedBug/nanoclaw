@@ -31,7 +31,7 @@ import {
   setSession,
   storeChatMetadata,
   storeMessage,
-  storeWebhookMessage,
+  insertExternalMessage,
 } from './db.js';
 import { GroupQueue } from './group-queue.js';
 import { startIpcWatcher } from './ipc.js';
@@ -527,7 +527,7 @@ async function main(): Promise<void> {
     await channel.connect();
   }
   const pluginCtx: PluginContext = {
-    insertMessage: storeWebhookMessage,
+    insertMessage: insertExternalMessage,
     sendMessage: (jid, text) => whatsapp.sendMessage(jid, text),
     getRegisteredGroups: () => registeredGroups,
     getMainChannelJid: () => {

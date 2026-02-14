@@ -25,7 +25,7 @@ export interface InboundMessage extends NewMessage {
 
 /** API surface available to plugins */
 export interface PluginContext {
-  insertMessage(chatJid: string, id: string, source: string, text: string): void;
+  insertMessage(chatJid: string, id: string, sender: string, senderName: string, text: string): void;
   sendMessage(jid: string, text: string): Promise<void>;
   getRegisteredGroups(): Record<string, RegisteredGroup>;
   getMainChannelJid(): string | null;
