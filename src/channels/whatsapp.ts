@@ -11,6 +11,7 @@ import makeWASocket, {
 } from '@whiskeysockets/baileys';
 
 import { BUSINESS_AUTH_DIR, GROUPS_DIR, STORE_DIR } from '../config.js';
+import { transcribeAudio } from '../transcription.js';
 import {
   getLastGroupSync,
   setLastGroupSync,
@@ -183,11 +184,26 @@ export class WhatsAppChannel implements Channel {
           const hasMedia = msg.message?.imageMessage || msg.message?.videoMessage ||
             msg.message?.documentMessage || msg.message?.audioMessage;
           if (hasMedia) {
+            const isVoiceNote = msg.message?.audioMessage?.ptt === true;
             const media = await this.downloadMedia(msg, groups[chatJid].folder);
             if (media) {
-              content = content
-                ? `${content}\n[${media.type}: ${media.path}]`
-                : `[${media.type}: ${media.path}]`;
+              if (isVoiceNote) {
+                // Transcribe voice notes using Whisper
+                const transcript = await this.transcribeVoiceNote(msg, groups[chatJid].folder);
+                if (transcript) {
+                  content = content
+                    ? `${content}\n[Voice: ${transcript}]`
+                    : `[Voice: ${transcript}]`;
+                } else {
+                  content = content
+                    ? `${content}\n[Voice Message - transcription unavailable]`
+                    : '[Voice Message - transcription unavailable]';
+                }
+              } else {
+                content = content
+                  ? `${content}\n[${media.type}: ${media.path}]`
+                  : `[${media.type}: ${media.path}]`;
+              }
             }
           }
 
@@ -269,6 +285,32 @@ export class WhatsAppChannel implements Channel {
       }
     }
     return null;
+  }
+
+  /**
+   * Transcribe a voice note using the configured transcription provider.
+   * Downloads the audio and sends it to Whisper API.
+   */
+  private async transcribeVoiceNote(
+    msg: Parameters<typeof downloadMediaMessage>[0],
+    groupFolder: string,
+  ): Promise<string | null> {
+    try {
+      const buffer = await downloadMediaMessage(msg, 'buffer', {});
+      if (!buffer || (buffer as Buffer).length === 0) {
+        logger.warn({ msgId: msg.key.id }, 'Empty audio buffer for voice note');
+        return null;
+      }
+      logger.info({ groupFolder, bytes: (buffer as Buffer).length }, 'Transcribing voice note');
+      const transcript = await transcribeAudio(buffer as Buffer);
+      if (transcript) {
+        logger.info({ groupFolder, length: transcript.length }, 'Voice note transcribed');
+      }
+      return transcript;
+    } catch (err) {
+      logger.error({ err, msgId: msg.key.id }, 'Voice note transcription failed');
+      return null;
+    }
   }
 
   async deleteMessage(jid: string, messageId: string): Promise<void> {
