@@ -112,11 +112,9 @@ This document tracks all legitimate divergences between our fork's `main` branch
 
 ## Not in Fork (upstream-only, intentionally excluded)
 
-| Path | Reason |
-|------|--------|
-| `.github/workflows/test.yml` | Upstream CI — we don't use GitHub Actions |
+None — all upstream files are now synced.
 
-*Previously excluded `repo-tokens/` and `update-tokens.yml` — now synced as of 2026-02-15.*
+*Previously excluded: `repo-tokens/`, `update-tokens.yml`, `.github/workflows/test.yml` — all synced as of 2026-02-15.*
 
 ## Pending Upstream Changes
 
