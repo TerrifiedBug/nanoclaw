@@ -251,7 +251,7 @@ done
 
 Present both installed and available channels to the user. Mark which are installed and which need installation.
 
-**If only one channel plugin is installed and none available** (default: WhatsApp ships with NanoClaw): Skip selection and proceed with that channel.
+**If only one channel plugin is installed and none available**: Skip selection and proceed with that channel.
 
 **If multiple channels available (installed or not)**: Ask the user which channel to set up as their main:
 
@@ -280,169 +280,55 @@ Store the chosen channel name — it will be used in later steps (registration, 
 
 ### 5c. Channel-specific authentication
 
-Based on the chosen channel, follow the appropriate auth flow below.
+Based on the chosen channel, authenticate using the channel's own auth mechanism.
 
-#### WhatsApp Authentication
+#### Generic auth flow
 
-The auth script supports two methods: QR code scanning and pairing code (phone number). Ask the user which they prefer.
+First, check if the channel is already authenticated:
 
-The auth script writes status to `data/channels/whatsapp/auth-status.txt`:
+```bash
+CHANNEL_NAME="CHOSEN_CHANNEL"
+CHANNEL_DIR="plugins/channels/$CHANNEL_NAME"
+[ -f "data/channels/$CHANNEL_NAME/auth/creds.json" ] || [ -f "data/channels/$CHANNEL_NAME/auth-status.txt" ] && echo "ALREADY_AUTHENTICATED" || echo "NEEDS_AUTH"
+```
+
+If already authenticated, skip to section 6.
+
+**If the channel has `auth.js`:**
+
+```bash
+[ -f "plugins/channels/$CHANNEL_NAME/auth.js" ] && echo "HAS_AUTH_SCRIPT" || echo "NO_AUTH_SCRIPT"
+```
+
+Run the auth script. It follows the standard status protocol — writes to `data/channels/{name}/auth-status.txt`:
 - `already_authenticated` — credentials already exist
-- `pairing_code:<CODE>` — pairing code generated, waiting for user to enter it
 - `authenticated` — successfully authenticated
+- `pairing_code:<CODE>` — interactive pairing (WhatsApp-specific)
 - `failed:<reason>` — authentication failed
 
-The script automatically handles error 515 (stream error after pairing) by reconnecting — this is normal and expected during pairing code auth.
-
-##### Ask the user which method to use
-
-> How would you like to authenticate WhatsApp?
->
-> 1. **QR code in browser** (Recommended) — Opens a page with the QR code to scan
-> 2. **Pairing code** — Enter a numeric code on your phone, no camera needed
-> 3. **QR code in terminal** — Run the auth command yourself in another terminal
-
-##### Option A: QR Code in Browser (Recommended)
-
-Detect if headless or has a display:
-
 ```bash
-[ -n "$DISPLAY" ] || [ -n "$WAYLAND_DISPLAY" ] || echo "HEADLESS"
+node plugins/channels/$CHANNEL_NAME/auth.js
 ```
 
-Clean any stale auth state and start auth in background:
-
-**Headless (server/VPS)** — use `--serve` to start an HTTP server:
-```bash
-rm -rf data/channels/whatsapp/auth data/channels/whatsapp/qr-data.txt data/channels/whatsapp/auth-status.txt
-node plugins/channels/whatsapp/auth.js --serve
-```
-
-**macOS/desktop** — use the file-based approach:
-```bash
-rm -rf data/channels/whatsapp/auth data/channels/whatsapp/qr-data.txt data/channels/whatsapp/auth-status.txt
-node plugins/channels/whatsapp/auth.js
-```
-
-Run this with `run_in_background: true`.
-
-Poll for QR data (up to 15 seconds):
+Run with `run_in_background: true`, then poll for status (up to 120 seconds):
 
 ```bash
-for i in $(seq 1 15); do if [ -f data/channels/whatsapp/qr-data.txt ]; then echo "qr_ready"; exit 0; fi; STATUS=$(cat data/channels/whatsapp/auth-status.txt 2>/dev/null || echo "waiting"); if [ "$STATUS" = "already_authenticated" ]; then echo "$STATUS"; exit 0; fi; sleep 1; done; echo "timeout"
+for i in $(seq 1 60); do STATUS=$(cat data/channels/$CHANNEL_NAME/auth-status.txt 2>/dev/null || echo "waiting"); if [ "$STATUS" = "authenticated" ] || [ "$STATUS" = "already_authenticated" ]; then echo "$STATUS"; exit 0; elif echo "$STATUS" | grep -q "^failed:"; then echo "$STATUS"; exit 0; fi; sleep 2; done; echo "timeout"
 ```
 
-If `already_authenticated`, skip to the next step.
+**If no `auth.js`:** Check the plugin's `plugin.json` for `containerEnvVars` — these are credentials the channel needs. Ask the user for each value and add them to `.env`.
 
-**Headless:** Tell the user to open `http://SERVER_IP:8899` in their browser to see and scan the QR code.
+#### Known channel auth patterns
 
-**macOS/desktop:** Generate the QR as SVG and inject it into the HTML template, then open it:
+These are common channels with specific auth requirements:
 
-```bash
-node -e "
-const QR = require('qrcode');
-const fs = require('fs');
-const qrData = fs.readFileSync('data/channels/whatsapp/qr-data.txt', 'utf8');
-QR.toString(qrData, { type: 'svg' }, (err, svg) => {
-  if (err) process.exit(1);
-  const template = fs.readFileSync('.claude/skills/setup/qr-auth.html', 'utf8');
-  fs.writeFileSync('data/channels/whatsapp/qr-auth.html', template.replace('{{QR_SVG}}', svg));
-  console.log('done');
-});
-"
-open data/channels/whatsapp/qr-auth.html
-```
+**WhatsApp** — Interactive auth via QR code or pairing code. The auth script supports `--serve` (HTTP QR for headless servers) and `--pairing-code --phone NUMBER` (numeric code entry). Handles error 515 reconnection automatically. See `.claude/skills/channels/whatsapp/SKILL.md` for the full QR/pairing flow details.
 
-Tell the user:
-> The QR code is ready. It expires in about 60 seconds.
->
-> Scan it with WhatsApp: **Settings → Linked Devices → Link a Device**
+**Telegram** — Token-based. Needs `TELEGRAM_BOT_TOKEN` in `.env` (get from @BotFather). No interactive auth needed.
 
-Then poll for completion (up to 120 seconds):
+**Discord** — Token-based. Needs `DISCORD_BOT_TOKEN` in `.env` (get from Discord Developer Portal). Enable Message Content Intent in bot settings. No interactive auth needed.
 
-```bash
-for i in $(seq 1 60); do STATUS=$(cat data/channels/whatsapp/auth-status.txt 2>/dev/null || echo "waiting"); if [ "$STATUS" = "authenticated" ] || [ "$STATUS" = "already_authenticated" ]; then echo "$STATUS"; exit 0; elif echo "$STATUS" | grep -q "^failed:"; then echo "$STATUS"; exit 0; fi; sleep 2; done; echo "timeout"
-```
-
-- If `authenticated`, success — clean up with `rm -f data/channels/whatsapp/qr-auth.html` and continue.
-- If `failed:qr_timeout`, offer to retry (re-run the auth and regenerate the HTML page).
-- If `failed:logged_out`, delete `data/channels/whatsapp/auth/` and retry.
-
-##### Option B: Pairing Code
-
-Ask the user for their phone number (with country code, no + or spaces, e.g. `14155551234`).
-
-Clean any stale auth state and start:
-
-```bash
-rm -rf data/channels/whatsapp/auth data/channels/whatsapp/qr-data.txt data/channels/whatsapp/auth-status.txt
-node plugins/channels/whatsapp/auth.js --pairing-code --phone PHONE_NUMBER
-```
-
-Run this with `run_in_background: true`.
-
-Poll for the pairing code (up to 15 seconds):
-
-```bash
-for i in $(seq 1 15); do STATUS=$(cat data/channels/whatsapp/auth-status.txt 2>/dev/null || echo "waiting"); if echo "$STATUS" | grep -q "^pairing_code:"; then echo "$STATUS"; exit 0; elif [ "$STATUS" = "authenticated" ] || [ "$STATUS" = "already_authenticated" ]; then echo "$STATUS"; exit 0; elif echo "$STATUS" | grep -q "^failed:"; then echo "$STATUS"; exit 0; fi; sleep 1; done; echo "timeout"
-```
-
-Extract the code from the status (e.g. `pairing_code:ABC12DEF` → `ABC12DEF`) and tell the user:
-
-> Your pairing code: **CODE_HERE**
->
-> 1. Open WhatsApp on your phone
-> 2. Tap **Settings → Linked Devices → Link a Device**
-> 3. Tap **"Link with phone number instead"**
-> 4. Enter the code: **CODE_HERE**
-
-Then poll for completion (up to 120 seconds):
-
-```bash
-for i in $(seq 1 60); do STATUS=$(cat data/channels/whatsapp/auth-status.txt 2>/dev/null || echo "waiting"); if [ "$STATUS" = "authenticated" ] || [ "$STATUS" = "already_authenticated" ]; then echo "$STATUS"; exit 0; elif echo "$STATUS" | grep -q "^failed:"; then echo "$STATUS"; exit 0; fi; sleep 2; done; echo "timeout"
-```
-
-- If `authenticated` or `already_authenticated`, success — continue to next step.
-- If `failed:logged_out`, delete `data/channels/whatsapp/auth/` and retry.
-- If `failed:515` or timeout, the 515 reconnect should handle this automatically. If it persists, the user may need to temporarily stop other WhatsApp-connected apps on the same device.
-
-##### Option C: QR Code in Terminal
-
-Tell the user to run the auth command in another terminal window:
-
-> Open another terminal and run:
-> ```
-> cd PROJECT_PATH && node plugins/channels/whatsapp/auth.js
-> ```
-> Scan the QR code that appears, then let me know when it says "Successfully authenticated".
-
-Replace `PROJECT_PATH` with the actual project path (use `pwd`).
-
-Wait for the user to confirm authentication succeeded, then continue to the next step.
-
-#### Other Channel Authentication
-
-For channels other than WhatsApp, check if the channel plugin has an `auth.js` script:
-
-```bash
-CHANNEL_DIR="plugins/channels/CHANNEL_NAME"
-[ -f "$CHANNEL_DIR/auth.js" ] && echo "HAS_AUTH_SCRIPT" || echo "NO_AUTH_SCRIPT"
-```
-
-**If it has `auth.js`:** Run it and follow its instructions:
-```bash
-node plugins/channels/CHANNEL_NAME/auth.js
-```
-
-**If no `auth.js`:** Check the plugin's `plugin.json` for `containerEnvVars` — these are credentials the channel needs. Ask the user for each credential and add them to `.env`. Common patterns:
-- Telegram: `TELEGRAM_BOT_TOKEN` — get from @BotFather
-- Discord: `DISCORD_BOT_TOKEN` — get from Discord Developer Portal
-- Slack: `SLACK_BOT_TOKEN` — get from Slack API console
-
-Check for existing auth state:
-```bash
-ls data/channels/CHANNEL_NAME/auth/ 2>/dev/null && echo "ALREADY_AUTHENTICATED" || echo "NEEDS_AUTH"
-```
+For WhatsApp specifically, if you need the detailed QR/pairing code flow, read `.claude/skills/channels/whatsapp/SKILL.md` and follow its auth instructions inline.
 
 ## 6. Configure Assistant Name and Main Channel
 
