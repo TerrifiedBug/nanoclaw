@@ -18,9 +18,6 @@ groups/global/*
 !groups/main/CLAUDE.md
 !groups/global/CLAUDE.md
 
-# Plans (internal/session-specific)
-docs/plans/
-
 # Secrets
 *.keys.json
 .env
