@@ -35,3 +35,7 @@ agents-sdk-docs
 # Plugins (personal config, created by skills)
 plugins/*
 !plugins/.gitkeep
+
+# Skill-created artifacts (added by plugin setup, not base config)
+.transcription.config.json
+docs/plans/
