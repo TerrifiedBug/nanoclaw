@@ -106,14 +106,12 @@ function createSchema(database: Database.Database): void {
     /* column already exists */
   }
 
-  // Add channel column to registered_groups (identifies which channel plugin owns this group)
+  // Add channel column to registered_groups (identifies which channel plugin owns this group).
+  // Groups registered before this migration will have channel = NULL.
+  // New groups get their channel set when registered through the plugin system.
   try {
     database.exec(
       `ALTER TABLE registered_groups ADD COLUMN channel TEXT`,
-    );
-    // Backfill: all existing groups are WhatsApp
-    database.exec(
-      `UPDATE registered_groups SET channel = 'whatsapp' WHERE channel IS NULL`,
     );
   } catch {
     /* column already exists */
