@@ -35,3 +35,4 @@ agents-sdk-docs
 # Plugins (personal config, created by skills)
 plugins/*
 !plugins/.gitkeep
+!plugins/agent-browser/

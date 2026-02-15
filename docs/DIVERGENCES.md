@@ -22,7 +22,7 @@ This document tracks all divergences between our fork's `main` branch and `upstr
 |------|--------|------------|---------|
 | `src/index.ts` | Modified | PLUGIN, DOCKER, BUGFIX, TASK, OTHER | Plugin lifecycle, per-group triggers, consecutive error tracking, message dedup, heartbeat typing |
 | `src/config.ts` | Modified | TASK, PLUGIN | `SCHEDULED_TASK_IDLE_TIMEOUT`, `createTriggerPattern()` |
-| `src/container-runner.ts` | Modified | PLUGIN, DOCKER, SECURITY, TASK, BUGFIX | Plugin mounts/hooks/MCP merge, runtime abstraction, env file quoting, OAuth sync, recursive skill copy |
+| `src/container-runner.ts` | Modified | PLUGIN, DOCKER, SECURITY, TASK, BUGFIX | Plugin mounts/hooks/MCP merge, runtime abstraction, env file quoting, OAuth sync, stale session skill cleanup |
 | `src/container-runtime.ts` | **New** | DOCKER | Runtime abstraction (Docker vs Apple Container), orphan cleanup, mount permissions |
 | `src/db.ts` | Modified | BUGFIX, TASK, PLUGIN | `>=` timestamp fix, `insertExternalMessage()`, `claimTask()`, model column |
 | `src/ipc.ts` | Modified | TASK | Model field |
@@ -45,6 +45,7 @@ This document tracks all divergences between our fork's `main` branch and `upstr
 
 | File | Status | Categories | Summary |
 |------|--------|------------|---------|
+| `container/skills/` | **Removed** | PLUGIN | Core skills (agent-browser) moved to `plugins/agent-browser/` — all skills now delivered via plugin system |
 | `container/Dockerfile` | Modified | PLUGIN | Added `jq`, skills directory, env-dir sourcing in entrypoint |
 | `container/build.sh` | Modified | DOCKER | Auto-detects Docker vs Apple Container runtime |
 | `container/agent-runner/src/index.ts` | Modified | PLUGIN, SECURITY, TASK, BUGFIX | Plugin hooks, secret scrubbing, model selection, SDK error detection, hardcoded name fix |
@@ -142,7 +143,7 @@ This document tracks all divergences between our fork's `main` branch and `upstr
 | SDK `is_error` flag detection | `container/agent-runner/src/index.ts` | Agent-runner treats SDK errors as successes |
 | `<internal>` tag stripping in tasks | `src/task-scheduler.ts` | Internal reasoning leaks to users in scheduled task output |
 | Hardcoded 'Andy' in transcript format | `container/agent-runner/src/index.ts` | Doesn't respect configurable name (PR #235 follow-up) |
-| Recursive skill directory copy | `src/container-runner.ts` | Flat copy breaks nested skill dirs (e.g. add-cal with src/) |
+| Stale session skill cleanup | `src/container-runner.ts` | Upstream additive-only skill copy leaves stale skills in session dirs after uninstall |
 | Timeout after successful response | `src/task-scheduler.ts` | Reports false failure when agent sent output but timed out closing |
 | `$ASSISTANT_NAME` in CLAUDE.md templates | `groups/global/CLAUDE.md`, `groups/main/CLAUDE.md` | PR #235 made name configurable but templates still say "Andy" |
 | Presence update ordering | `src/channels/whatsapp.ts` | Fires before LID mapping, errors silently swallowed |
