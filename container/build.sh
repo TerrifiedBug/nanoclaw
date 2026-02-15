@@ -4,7 +4,8 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$PROJECT_DIR"
 
 IMAGE_NAME="nanoclaw-agent"
 TAG="${1:-latest}"
@@ -21,11 +22,48 @@ else
   exit 1
 fi
 
+# Collect plugin Dockerfile.partial files
+PARTIALS=()
+for f in plugins/*/Dockerfile.partial plugins/*/*/Dockerfile.partial; do
+  [ -f "$f" ] && PARTIALS+=("$f")
+done
+
+DOCKERFILE="container/Dockerfile"
+
+if [ ${#PARTIALS[@]} -gt 0 ]; then
+  echo "Found ${#PARTIALS[@]} plugin Dockerfile.partial file(s):"
+  for f in "${PARTIALS[@]}"; do echo "  - $f"; done
+
+  # Generate combined Dockerfile
+  COMBINED=$(mktemp /tmp/Dockerfile.combined.XXXXXX)
+  trap "rm -f $COMBINED" EXIT
+
+  # Split base Dockerfile at "USER node" line
+  BEFORE_USER=$(sed '/^USER node/,$d' "$DOCKERFILE")
+  FROM_USER=$(sed -n '/^USER node/,$p' "$DOCKERFILE")
+
+  echo "$BEFORE_USER" > "$COMBINED"
+  echo "" >> "$COMBINED"
+
+  # Append each plugin partial
+  for f in "${PARTIALS[@]}"; do
+    PLUGIN_NAME=$(echo "$f" | sed 's|plugins/||; s|/Dockerfile.partial||')
+    echo "# --- Plugin: $PLUGIN_NAME ---" >> "$COMBINED"
+    cat "$f" >> "$COMBINED"
+    echo "" >> "$COMBINED"
+  done
+
+  echo "$FROM_USER" >> "$COMBINED"
+
+  DOCKERFILE="$COMBINED"
+  echo ""
+fi
+
 echo "Building NanoClaw agent container image..."
 echo "Runtime: ${CLI}"
 echo "Image: ${IMAGE_NAME}:${TAG}"
 
-$CLI build -t "${IMAGE_NAME}:${TAG}" .
+$CLI build -f "$DOCKERFILE" -t "${IMAGE_NAME}:${TAG}" .
 
 echo ""
 echo "Build complete!"
