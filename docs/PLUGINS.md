@@ -125,9 +125,9 @@ Called for every inbound message before it reaches the agent. Hooks run in plugi
 
 The `InboundMessage` has the same shape as `NewMessage`: `id`, `chat_jid`, `sender`, `sender_name`, `content`, `timestamp`, plus optional `is_from_me`, `is_bot_message`, `mediaType`, and `mediaPath`.
 
-### `onChannel(ctx: PluginContext)`
+### `onChannel(ctx: PluginContext, config: ChannelPluginConfig)`
 
-Return a `Channel` object to register an entirely new messaging channel (e.g., Telegram, Slack). The channel must implement: `name`, `connect()`, `sendMessage(jid, text)`, `isConnected()`, `ownsJid(jid)`, `disconnect()`, and optionally `setTyping(jid, isTyping)`.
+Return a `Channel` object to register a messaging channel (WhatsApp, Telegram, etc.). Channel plugins are a specialized plugin type with their own directory convention, interfaces, and lifecycle. See **[Channel Plugins](CHANNEL_PLUGINS.md)** for the full guide.
 
 ### Execution Order
 
