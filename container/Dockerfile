@@ -42,7 +42,7 @@ WORKDIR /app
 # Copy package files first for better caching
 COPY agent-runner/package*.json ./
 
-# Install dependencies
+# Install all dependencies (including devDependencies for build)
 RUN npm install
 
 # Copy source code
@@ -50,6 +50,9 @@ COPY agent-runner/ ./
 
 # Build TypeScript
 RUN npm run build
+
+# Remove devDependencies (vitest, etc.) from production image
+RUN npm prune --omit=dev
 
 # Create workspace directories
 RUN mkdir -p /workspace/group /workspace/global /workspace/extra /workspace/ipc/messages /workspace/ipc/tasks /workspace/ipc/input /workspace/.claude/skills
