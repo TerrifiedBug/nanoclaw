@@ -1,0 +1,6 @@
+{
+  "name": "norish",
+  "description": "Import recipes into Norish by URL",
+  "containerEnvVars": ["NORISH_URL", "NORISH_API_KEY"],
+  "hooks": []
+}
