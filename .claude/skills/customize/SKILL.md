@@ -25,7 +25,7 @@ This skill helps users add capabilities or modify behavior. Use AskUserQuestion 
 | `src/types.ts` | TypeScript interfaces (includes Channel) |
 | `src/config.ts` | Assistant name, trigger pattern, directories |
 | `src/db.ts` | Database initialization and queries |
-| `plugins/whatsapp/index.js` | WhatsApp channel plugin (Baileys) |
+| `plugins/channels/whatsapp/index.js` | WhatsApp channel plugin (Baileys) |
 | `groups/CLAUDE.md` | Global memory/persona |
 
 ## Adding Skills to NanoClaw Agents
@@ -102,7 +102,7 @@ Questions to ask:
 
 Implementation pattern:
 1. Create `plugins/{name}/plugin.json` with `"channelPlugin": true` and `"hooks": ["onChannel"]`
-2. Create `plugins/{name}/index.js` exporting `onChannel(ctx, config)` that returns a `Channel` object (see `plugins/whatsapp/index.js` for reference)
+2. Create `plugins/{name}/index.js` exporting `onChannel(ctx, config)` that returns a `Channel` object (see `plugins/channels/whatsapp/index.js` for reference)
 3. Messages are delivered via `config.onMessage` callback; routing is automatic via `ownsJid()`
 
 ### Adding a New MCP Integration
@@ -169,6 +169,6 @@ User: "Add Telegram as an input channel"
 
 1. Ask: "Should Telegram use the same @Andy trigger, or a different one?"
 2. Ask: "Should Telegram messages create separate conversation contexts, or share with WhatsApp groups?"
-3. Create `plugins/telegram/` with `plugin.json` and `index.js` exporting `onChannel` (see `plugins/whatsapp/` for reference)
+3. Create `plugins/telegram/` with `plugin.json` and `index.js` exporting `onChannel` (see `plugins/channels/whatsapp/` for reference)
 4. Add the channel to `main()` in `src/index.ts`
 5. Tell user how to authenticate and test

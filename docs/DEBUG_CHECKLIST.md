@@ -120,7 +120,7 @@ grep 'QR\|authentication required\|qr' logs/nanoclaw.log | tail -5
 ls -la store/auth/
 
 # Re-authenticate if needed (use /setup-whatsapp skill)
-node plugins/whatsapp/auth.js
+node plugins/channels/whatsapp/auth.js
 ```
 
 ## Service Management

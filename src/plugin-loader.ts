@@ -261,22 +261,39 @@ export class PluginRegistry {
   }
 }
 
+/** Collect plugin directories: scans plugins/ and one level of subdirectories (e.g. plugins/channels/) */
+function discoverPluginDirs(rootDir: string): string[] {
+  const dirs: string[] = [];
+  if (!fs.existsSync(rootDir)) return dirs;
+
+  for (const entry of fs.readdirSync(rootDir)) {
+    const entryPath = path.join(rootDir, entry);
+    if (!fs.statSync(entryPath).isDirectory()) continue;
+
+    if (fs.existsSync(path.join(entryPath, 'plugin.json'))) {
+      // Direct plugin: plugins/{name}/plugin.json
+      dirs.push(entryPath);
+    } else {
+      // Category folder: plugins/{category}/{name}/plugin.json
+      for (const sub of fs.readdirSync(entryPath)) {
+        const subPath = path.join(entryPath, sub);
+        if (fs.statSync(subPath).isDirectory() && fs.existsSync(path.join(subPath, 'plugin.json'))) {
+          dirs.push(subPath);
+        }
+      }
+    }
+  }
+  return dirs;
+}
+
 /** Discover and load all plugins from the plugins/ directory */
 export async function loadPlugins(pluginsDir?: string): Promise<PluginRegistry> {
   const registry = new PluginRegistry();
   const dir = pluginsDir || path.join(process.cwd(), 'plugins');
 
-  if (!fs.existsSync(dir)) {
-    logger.debug({ dir }, 'No plugins directory found');
-    return registry;
-  }
-
-  const entries = fs.readdirSync(dir);
-  for (const entry of entries) {
-    const pluginDir = path.join(dir, entry);
+  const pluginDirs = discoverPluginDirs(dir);
+  for (const pluginDir of pluginDirs) {
     const manifestPath = path.join(pluginDir, 'plugin.json');
-
-    if (!fs.existsSync(manifestPath)) continue;
 
     try {
       const raw = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
@@ -310,7 +327,7 @@ export async function loadPlugins(pluginsDir?: string): Promise<PluginRegistry> 
 
       registry.add({ manifest, dir: pluginDir, hooks });
     } catch (err) {
-      logger.error({ plugin: entry, err }, 'Failed to load plugin');
+      logger.error({ plugin: path.basename(pluginDir), err }, 'Failed to load plugin');
     }
   }
 

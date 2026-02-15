@@ -18,7 +18,7 @@ Single Node.js process that connects to messaging channels via plugins, routes m
 | `src/container-runner.ts` | Spawns agent containers with mounts |
 | `src/task-scheduler.ts` | Runs scheduled tasks |
 | `src/db.ts` | SQLite operations |
-| `plugins/whatsapp/index.js` | WhatsApp channel plugin (Baileys) |
+| `plugins/channels/whatsapp/index.js` | WhatsApp channel plugin (Baileys) |
 | `groups/{name}/CLAUDE.md` | Per-group memory (isolated) |
 
 ## Security

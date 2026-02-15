@@ -37,7 +37,9 @@ plugins/*
 !plugins/.gitkeep
 # Core plugins — ship with repo
 !plugins/agent-browser/
-!plugins/whatsapp/
+!plugins/channels/
+plugins/channels/*
+!plugins/channels/whatsapp/
 
 # Skill-created artifacts (added by plugin setup, not base config)
 .transcription.config.json
