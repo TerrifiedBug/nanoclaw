@@ -1,0 +1,6 @@
+{
+  "name": "imap-read",
+  "description": "Read-only IMAP email access",
+  "containerEnvVars": ["EMAIL_ACCOUNTS"],
+  "hooks": []
+}

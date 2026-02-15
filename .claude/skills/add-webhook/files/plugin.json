@@ -1,0 +1,6 @@
+{
+  "name": "webhook",
+  "description": "HTTP webhook endpoint for external event ingestion (HA, uptime monitors, changedetection, etc.)",
+  "containerEnvVars": ["NANOCLAW_WEBHOOK_URL", "NANOCLAW_WEBHOOK_SECRET"],
+  "hooks": ["onStartup", "onShutdown"]
+}

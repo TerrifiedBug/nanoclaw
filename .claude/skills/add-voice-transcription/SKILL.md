@@ -5,11 +5,7 @@ description: Add voice message transcription to NanoClaw using OpenAI's Whisper 
 
 # Add Voice Message Transcription
 
-This skill adds automatic voice message transcription as a plugin using OpenAI's Whisper API. When users send voice notes in WhatsApp, the `onInboundMessage` hook transcribes them before the agent sees the message.
-
-**Architecture:** The transcription plugin uses the `onInboundMessage` hook to intercept voice messages, download the audio buffer, send it to OpenAI's Whisper API, and replace the message content with the transcribed text. No core source files are modified.
-
-**UX Note:** When asking the user questions, prefer using the `AskUserQuestion` tool instead of just outputting text. This integrates with Claude's built-in question/answer system for a better experience.
+Automatic voice message transcription via OpenAI's Whisper API. When users send voice notes in WhatsApp, the `onInboundMessage` hook transcribes them before the agent sees the message.
 
 ## Prerequisites
 
@@ -27,186 +23,55 @@ This skill adds automatic voice message transcription as a plugin using OpenAI's
 
 Wait for user to confirm they have an API key before continuing.
 
----
+## Install
 
-## Implementation
+1. Create the transcription configuration file at `.transcription.config.json`:
+   ```json
+   {
+     "provider": "openai",
+     "openai": {
+       "apiKey": "",
+       "model": "whisper-1"
+     },
+     "enabled": true,
+     "fallbackMessage": "[Voice Message - transcription unavailable]"
+   }
+   ```
+   Add it to `.gitignore`:
+   ```bash
+   echo ".transcription.config.json" >> .gitignore
+   ```
 
-### Step 1: Create Transcription Configuration
+   **Use the AskUserQuestion tool** to confirm:
+   > I've created `.transcription.config.json` in the project root. You'll need to add your OpenAI API key to it manually:
+   >
+   > 1. Open `.transcription.config.json`
+   > 2. Replace the empty `"apiKey": ""` with your key: `"apiKey": "sk-proj-..."`
+   > 3. Save the file
+   >
+   > Let me know when you've added it.
 
-Create a configuration file for transcription settings (without the API key):
+   Wait for user confirmation.
 
-Write to `.transcription.config.json`:
+2. Copy plugin files:
+   ```bash
+   cp -r .claude/skills/add-voice-transcription/files/ plugins/transcription/
+   ```
 
-```json
-{
-  "provider": "openai",
-  "openai": {
-    "apiKey": "",
-    "model": "whisper-1"
-  },
-  "enabled": true,
-  "fallbackMessage": "[Voice Message - transcription unavailable]"
-}
-```
+3. Install dependencies (use `--legacy-peer-deps` due to Zod v3/v4 conflict):
+   ```bash
+   cd plugins/transcription && npm install --legacy-peer-deps
+   ```
 
-Add this file to `.gitignore` to prevent committing API keys:
+4. Rebuild and restart:
+   ```bash
+   npm run build
+   systemctl restart nanoclaw  # or launchctl on macOS
+   ```
 
-```bash
-echo ".transcription.config.json" >> .gitignore
-```
-
-**Use the AskUserQuestion tool** to confirm:
-
-> I've created `.transcription.config.json` in the project root. You'll need to add your OpenAI API key to it manually:
->
-> 1. Open `.transcription.config.json`
-> 2. Replace the empty `"apiKey": ""` with your key: `"apiKey": "sk-proj-..."`
-> 3. Save the file
->
-> Let me know when you've added it.
-
-Wait for user confirmation.
-
-### Step 2: Create Plugin
-
-Create the `plugins/transcription/` directory with `plugin.json`, `package.json`, and `index.js`.
-
-```bash
-mkdir -p plugins/transcription
-```
-
-#### 2a. Create `plugins/transcription/plugin.json`
-
-```json
-{
-  "name": "transcription",
-  "description": "Voice message transcription via OpenAI Whisper",
-  "containerEnvVars": [],
-  "hooks": ["onInboundMessage"],
-  "dependencies": true
-}
-```
-
-The `"dependencies": true` flag tells the plugin loader to look for a `package.json` and ensure `node_modules` is installed.
-
-#### 2b. Create `plugins/transcription/package.json`
-
-```json
-{
-  "name": "nanoclaw-plugin-transcription",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "openai": "^4.77.0"
-  }
-}
-```
-
-#### 2c. Create `plugins/transcription/index.js`
-
-This is the plugin's hook code. It intercepts inbound voice messages via the `onInboundMessage` hook, transcribes them using OpenAI Whisper, and replaces the message content with the transcription.
-
-```javascript
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-function loadConfig() {
-  const configPath = path.join(__dirname, '..', '..', '.transcription.config.json');
-  try {
-    return JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-  } catch {
-    return { provider: 'openai', enabled: false, fallbackMessage: '[Voice Message - transcription unavailable]' };
-  }
-}
-
-async function transcribeWithOpenAI(audioPath, config) {
-  if (!config.openai?.apiKey || config.openai.apiKey === '') return null;
-
-  const openaiModule = await import('openai');
-  const OpenAI = openaiModule.default;
-  const { toFile } = openaiModule;
-
-  const openai = new OpenAI({ apiKey: config.openai.apiKey });
-  const buffer = fs.readFileSync(audioPath);
-  const file = await toFile(buffer, 'voice.ogg', { type: 'audio/ogg' });
-
-  const transcription = await openai.audio.transcriptions.create({
-    file,
-    model: config.openai.model || 'whisper-1',
-    response_format: 'text',
-  });
-
-  return /** @type {string} */ (transcription);
-}
-
-/**
- * onInboundMessage hook -- transcribe voice notes.
- * The WhatsApp channel saves audio files to mediaPath. This hook reads the
- * saved file and transcribes it. Voice notes have mediaType 'audio' and
- * content containing '[audio: /workspace/group/media/...]'.
- */
-export async function onInboundMessage(msg, channel) {
-  // Only process audio messages that have a saved media file
-  if (msg.mediaType !== 'audio' || !msg.mediaPath) return msg;
-
-  // Resolve the host path from the container-relative path
-  // mediaPath is like /workspace/group/media/xyz.ogg — map to groups/<folder>/media/xyz.ogg
-  const hostPath = msg.mediaPath.replace(/^\/workspace\/group\//, path.join(process.cwd(), 'groups', msg.chat_jid.replace(/@.*$/, ''), ''));
-  if (!fs.existsSync(hostPath)) return msg;
-
-  const config = loadConfig();
-  if (!config.enabled) return msg;
-
-  try {
-    let transcript = null;
-    if (config.provider === 'openai') {
-      transcript = await transcribeWithOpenAI(hostPath, config);
-    }
-
-    if (transcript) {
-      const trimmed = transcript.trim();
-      // Replace the [audio: path] annotation with the transcription
-      msg.content = msg.content.replace(/\[audio: [^\]]+\]/, `[Voice: ${trimmed}]`);
-    }
-  } catch (err) {
-    console.error('Transcription plugin error:', err);
-  }
-
-  return msg;
-}
-```
-
-### Step 3: Install Dependencies
-
-The OpenAI SDK requires Zod v3 as an optional peer dependency, but NanoClaw uses Zod v4. This conflict is guaranteed, so always use `--legacy-peer-deps`:
-
-```bash
-cd plugins/transcription && npm install --legacy-peer-deps
-```
-
-### Step 4: Build and Restart
-
-```bash
-npm run build
-```
-
-Restart the service:
-
-```bash
-# Linux
-systemctl restart nanoclaw
-
-# macOS
-launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist && launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist
-```
-
-### Step 5: Test Voice Transcription
+## Verify
 
 Tell the user:
-
 > Voice transcription is ready! Test it by:
 >
 > 1. Open WhatsApp on your phone
@@ -218,19 +83,15 @@ Tell the user:
 > `[Voice: <transcribed text here>]`
 
 Watch for transcription in the logs:
-
 ```bash
 tail -f logs/nanoclaw.log | grep -i "voice\|transcri"
 ```
 
----
-
-## Configuration Options
+## Configuration
 
 ### Enable/Disable Transcription
 
-To temporarily disable without removing the plugin, edit `.transcription.config.json`:
-
+Edit `.transcription.config.json`:
 ```json
 {
   "enabled": false
@@ -238,97 +99,20 @@ To temporarily disable without removing the plugin, edit `.transcription.config.
 ```
 
 ### Change Fallback Message
-
-Customize what's stored when transcription fails:
-
 ```json
 {
   "fallbackMessage": "[Voice note - transcription unavailable]"
 }
 ```
 
-### Switch to Different Provider (Future)
-
-The architecture supports multiple providers. To add Groq, Deepgram, or local Whisper:
-
-1. Add provider config to `.transcription.config.json`
-2. Implement provider function in `plugins/transcription/index.js` (similar to `transcribeWithOpenAI`)
-3. Add a branch to the provider check in `onInboundMessage`
-
----
-
 ## Troubleshooting
 
-### "Transcription unavailable" or "Transcription failed"
+- **"Transcription unavailable"**: Check API key in `.transcription.config.json` and OpenAI credits
+- **Voice messages not detected**: Ensure you're sending voice notes (microphone button), not audio file attachments
+- **Dependency conflicts**: Always use `cd plugins/transcription && npm install --legacy-peer-deps`
 
-Check logs for specific errors:
-```bash
-tail -100 logs/nanoclaw.log | grep -i transcription
-```
+## Remove
 
-Common causes:
-- API key not configured or invalid
-- No API credits remaining
-- Network connectivity issues
-- Audio format not supported by Whisper
-
-### Voice messages not being detected
-
-- Ensure you're sending actual voice notes (microphone button), not audio file attachments
-- The plugin checks for `msg.mediaType === 'voice'` -- regular audio attachments are not transcribed
-
-### Dependency conflicts (Zod versions)
-
-The OpenAI SDK requires Zod v3, but NanoClaw uses Zod v4. This conflict is guaranteed -- always use:
-```bash
-cd plugins/transcription && npm install --legacy-peer-deps
-```
-
----
-
-## Security Notes
-
-- The `.transcription.config.json` file contains your API key and should NOT be committed to version control
-- It's added to `.gitignore` by this skill
-- Audio files are sent to OpenAI for transcription - review their data usage policy
-- No audio files are stored locally after transcription
-- Transcripts are stored in the database like regular text messages
-
----
-
-## Cost Management
-
-Monitor usage in your OpenAI dashboard: https://platform.openai.com/usage
-
-Tips to control costs:
-- Set spending limits in OpenAI account settings
-- Disable transcription during development/testing with `"enabled": false`
-- Typical usage: 100 voice notes/month (~3 minutes average) = ~$1.80
-
----
-
-## Removal
-
-1. Remove the plugin:
-```bash
-rm -rf plugins/transcription/
-```
-
-2. Delete the config file:
-```bash
-rm -f .transcription.config.json
-```
-
-3. Rebuild and restart NanoClaw.
-
----
-
-## Future Enhancements
-
-Potential additions:
-- **Local Whisper**: Use `whisper.cpp` or `faster-whisper` for offline transcription
-- **Groq Integration**: Free tier with Whisper, very fast
-- **Deepgram**: Alternative cloud provider
-- **Language Detection**: Auto-detect and transcribe non-English voice notes
-- **Cost Tracking**: Log transcription costs per message
-- **Speaker Diarization**: Identify different speakers in voice notes
+1. `rm -rf plugins/transcription/`
+2. `rm -f .transcription.config.json`
+3. Rebuild and restart.

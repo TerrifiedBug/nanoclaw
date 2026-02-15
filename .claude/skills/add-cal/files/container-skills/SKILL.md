@@ -1,0 +1,49 @@
+---
+name: calendar
+description: Read and manage calendars. Use for scheduling, checking availability, creating events, or any calendar-related request. Supports Google Calendar (gog) and CalDAV (iCloud, Nextcloud, Fastmail).
+allowed-tools: Bash(gog:*,cal:*,curl:*)
+---
+
+# Calendar Access
+
+## Google Calendar (gog CLI)
+
+List calendars:
+```bash
+gog calendar calendars
+```
+
+List upcoming events (next 7 days):
+```bash
+gog calendar events --from today --to "+7d"
+```
+
+Get events for a specific date:
+```bash
+gog calendar events --from "2025-01-15" --to "2025-01-16"
+```
+
+Create an event:
+```bash
+gog calendar create --title "Meeting" --start "2025-01-15T10:00:00" --end "2025-01-15T11:00:00" --calendar "primary"
+```
+
+## CalDAV Calendars (iCloud, Nextcloud, Fastmail)
+
+The `cal` CLI reads CALDAV_ACCOUNTS from the environment.
+
+List calendars:
+```bash
+cal calendars
+```
+
+List events:
+```bash
+cal events --from today --to "+7d"
+```
+
+## Tips
+
+- Default to 7-day lookahead unless the user specifies a range
+- When creating events, confirm the time and calendar with the user first
+- Use ISO 8601 format for dates/times
