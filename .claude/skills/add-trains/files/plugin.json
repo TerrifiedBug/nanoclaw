@@ -1,0 +1,6 @@
+{
+  "name": "trains",
+  "description": "UK train times via National Rail Darwin API",
+  "containerEnvVars": ["NATIONAL_RAIL_TOKEN"],
+  "hooks": []
+}

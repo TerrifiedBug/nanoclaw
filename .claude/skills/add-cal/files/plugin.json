@@ -1,0 +1,6 @@
+{
+  "name": "calendar",
+  "description": "Google Calendar (gog) and CalDAV calendar access",
+  "containerEnvVars": ["GOG_KEYRING_PASSWORD", "GOG_ACCOUNT", "CALDAV_ACCOUNTS"],
+  "hooks": []
+}
