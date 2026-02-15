@@ -4,7 +4,7 @@ This document tracks all legitimate divergences between our fork's `main` branch
 
 **Branch strategy:**
 - `main` = clean NanoClaw as if fresh install (divergence analysis compares this vs upstream)
-- `tars` = personal branch with installed plugins that may modify source (Dockerfile, gitignore, etc.)
+- Personal deployments may have installed plugins that modify source (Dockerfile, gitignore, etc.)
 
 **Last full audit:** 2026-02-15 (updated after mediaHostPath addition for voice transcription plugin support)
 
