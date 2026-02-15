@@ -1,0 +1,10 @@
+node_modules/
+store/
+data/
+logs/
+.git/
+groups/
+docs/
+.claude/
+*.keys.json
+.env
