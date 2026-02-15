@@ -6,7 +6,7 @@ This document tracks all legitimate divergences between our fork's `main` branch
 - `main` = clean NanoClaw as if fresh install (divergence analysis compares this vs upstream)
 - Personal deployments may have installed plugins that modify source (Dockerfile, gitignore, etc.)
 
-**Last full audit:** 2026-02-15 (updated after decoupling cleanup — per-plugin deps, channel-agnostic comments/tools)
+**Last full audit:** 2026-02-15 (updated after brainstorm cleanup — Dockerfile.partial mechanism, calendar fix, systemd, gitignore cleanup)
 
 ## Divergence Categories
 
@@ -50,8 +50,8 @@ This document tracks all legitimate divergences between our fork's `main` branch
 
 | File | Status | Categories | Summary |
 |------|--------|------------|---------|
-| `container/Dockerfile` | Modified | PLUGIN | Added `jq`, skills directory, env-dir sourcing in entrypoint |
-| `container/build.sh` | Modified | DOCKER | Auto-detects Docker vs Apple Container runtime |
+| `container/Dockerfile` | Modified | PLUGIN | Added `jq`, skills directory, env-dir sourcing in entrypoint; gogcli removed from base (moved to plugin Dockerfile.partial), COPY paths updated for project-root build context |
+| `container/build.sh` | Modified | DOCKER | Auto-detects Docker vs Apple Container runtime; Dockerfile.partial merging from plugins, project-root build context |
 | `container/agent-runner/src/index.ts` | Modified | PLUGIN, SECURITY, TASK | Plugin hook loading, secret scrubbing, model selection, error detection |
 | `container/agent-runner/src/ipc-mcp-stdio.ts` | Modified | BUGFIX, PLUGIN | Duplicate task creation warning, channel-agnostic tool descriptions |
 | `container/agent-runner/src/security-hooks.ts` | **New** | SECURITY | Bash sanitization, `/proc/*/environ` blocking, `/tmp/input.json` blocking |
@@ -64,14 +64,18 @@ This document tracks all legitimate divergences between our fork's `main` branch
 
 | File | Status | Categories | Summary |
 |------|--------|------------|---------|
-| `.gitignore` | Modified | PLUGIN | `plugins/*` and `!plugins/.gitkeep` |
+| `.dockerignore` | **New** | OTHER | Excludes non-build dirs from Docker context |
+| `.gitignore` | Modified | PLUGIN, OTHER | `plugins/*` and `!plugins/.gitkeep`; removed docs/plans/, added .mcp.json |
 | `plugins/.gitkeep` | **New** | PLUGIN | Tracks empty plugins directory |
 | `CLAUDE.md` | Modified | SECURITY | Added security section referencing `docs/SECURITY.md` |
 | `groups/global/CLAUDE.md` | Modified | OTHER | References `$ASSISTANT_NAME` env var (upstream still hardcodes "Andy") |
 | `groups/main/CLAUDE.md` | Modified | SECURITY, OTHER | Anti-prompt-injection rules, `$ASSISTANT_NAME` env var, generic example triggers |
 | `docs/DIVERGENCES.md` | **New** | OTHER | This file — fork divergence tracking |
+| `docs/PLUGINS.md` | Modified | PLUGIN | Added Dockerfile.partial documentation section |
+| `docs/CHANNEL_PLUGINS.md` | Modified | PLUGIN | Removed outdated WhatsApp backfill reference |
 | `package.json` | Modified | PLUGIN | Channel SDK deps removed (moved to per-plugin packages) |
 | `package-lock.json` | Modified | OTHER | Platform-specific (Linux vs macOS optional deps) |
+| `.mcp.json` | Untracked | OTHER | Gitignored — modified by skill installations |
 
 ## Skills (`.claude/skills/`)
 
@@ -79,19 +83,20 @@ This document tracks all legitimate divergences between our fork's `main` branch
 
 | Skill | Categories | Summary |
 |-------|------------|---------|
-| `setup/SKILL.md` | DOCKER, OTHER | Headless/Linux QR auth support, timezone configuration step |
+| `setup/SKILL.md` | DOCKER, OTHER | Headless/Linux QR auth support, timezone configuration step, systemd service support, ASSISTANT_NAME env var step |
 | `customize/SKILL.md` | PLUGIN, DOCKER | Plugin architecture docs, Linux service management |
 | `add-whatsapp-voice/SKILL.md` | PLUGIN, MEDIA | Renamed from `add-voice-transcription`; rewritten for plugin architecture using `mediaHostPath` |
 
-### New skills (18)
+### New skills (20)
 
 | Skill | Description |
 |-------|-------------|
 | `add-brave-search` | Brave Search API for web search |
-| `add-cal` | Google Calendar + CalDAV (7 files incl. TypeScript client) |
+| `add-cal` | Google Calendar + CalDAV (7 files incl. TypeScript client); rewritten for Dockerfile.partial architecture |
 | `add-changedetection` | changedetection.io website monitoring |
 | `add-claude-mem` | Persistent memory for agent containers |
 | `add-commute` | Travel times via Waze API |
+| `add-discord` | Add Discord as a channel plugin; per-plugin deps template, untracked non-core files |
 | `add-norish` | Norish recipe import by URL |
 | `create-plugin` | Meta-skill: guided plugin creation from idea to implementation |
 | `add-freshrss` | Self-hosted RSS feed reader |
@@ -103,6 +108,7 @@ This document tracks all legitimate divergences between our fork's `main` branch
 | `add-trains` | UK National Rail departure data |
 | `add-weather` | Weather via wttr.in / Open-Meteo |
 | `add-webhook` | HTTP webhook endpoint for push events |
+| `add-whatsapp` | Add WhatsApp as a channel plugin |
 | `set-model` | Change Claude model for containers |
 | `update-nanoclaw` | Upstream sync management |
 
