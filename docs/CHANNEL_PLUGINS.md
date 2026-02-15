@@ -410,10 +410,9 @@ The `registered_groups` table includes a `channel` column that links each group 
 
 ```sql
 ALTER TABLE registered_groups ADD COLUMN channel TEXT;
-UPDATE registered_groups SET channel = 'whatsapp' WHERE channel IS NULL;
 ```
 
-This migration runs automatically on startup (`src/db.ts`). Existing groups are backfilled with `'whatsapp'`.
+This migration runs automatically on startup (`src/db.ts`). The column is added without a default value. Groups registered before this migration will have `channel = NULL`. New groups get the channel name set during registration.
 
 When registering a new group:
 
