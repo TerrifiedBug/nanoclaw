@@ -1,3 +1,4 @@
+import { exec } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
@@ -62,7 +63,6 @@ export class WhatsAppChannel implements Channel {
       },
       printQRInTerminal: false,
       logger,
-      syncFullHistory: false,
       browser: Browsers.macOS('Chrome'),
     });
 
@@ -70,7 +70,12 @@ export class WhatsAppChannel implements Channel {
       const { connection, lastDisconnect, qr } = update;
 
       if (qr) {
-        logger.error('WhatsApp authentication required. Run: npm run auth');
+        const msg =
+          'WhatsApp authentication required. Run /setup in Claude Code.';
+        logger.error(msg);
+        exec(
+          `osascript -e 'display notification "${msg}" with title "NanoClaw" sound name "Basso"'`,
+        );
         setTimeout(() => process.exit(1), 1000);
       }
 
@@ -97,9 +102,6 @@ export class WhatsAppChannel implements Channel {
       } else if (connection === 'open') {
         this.connected = true;
         logger.info('Connected to WhatsApp');
-
-        // Announce availability so WhatsApp relays subsequent presence updates (typing indicators)
-        this.sock.sendPresenceUpdate('available').catch(() => {});
 
         // Build LID to phone mapping from auth state for self-chat translation
         if (this.sock.user) {
@@ -187,31 +189,16 @@ export class WhatsAppChannel implements Channel {
           // Download media (images, videos, documents, audio) if present
           const hasMedia = msg.message?.imageMessage || msg.message?.videoMessage ||
             msg.message?.documentMessage || msg.message?.audioMessage;
-          let audioBuffer: Buffer | undefined;
           let mediaType: string | undefined;
           let mediaPath: string | undefined;
           if (hasMedia) {
-            const isVoiceNote = msg.message?.audioMessage?.ptt === true;
             const media = await this.downloadMedia(msg, groups[chatJid].folder);
             if (media) {
+              mediaType = media.type;
               mediaPath = media.path;
-              if (isVoiceNote) {
-                // For voice notes, download raw buffer for plugin transcription
-                mediaType = 'voice';
-                try {
-                  const buf = await downloadMediaMessage(msg, 'buffer', {});
-                  if (buf && (buf as Buffer).length > 0) {
-                    audioBuffer = buf as Buffer;
-                  }
-                } catch {
-                  // Buffer download failed; media file still saved
-                }
-              } else {
-                mediaType = media.type;
-                content = content
-                  ? `${content}\n[${media.type}: ${media.path}]`
-                  : `[${media.type}: ${media.path}]`;
-              }
+              content = content
+                ? `${content}\n[${media.type}: ${media.path}]`
+                : `[${media.type}: ${media.path}]`;
             }
           }
 
@@ -224,7 +211,6 @@ export class WhatsAppChannel implements Channel {
             timestamp,
             is_from_me: fromMe,
             is_bot_message: isBotMessage,
-            audioBuffer,
             mediaType,
             mediaPath,
           });
@@ -305,12 +291,6 @@ export class WhatsAppChannel implements Channel {
       }
     }
     return null;
-  }
-
-  async deleteMessage(jid: string, messageId: string): Promise<void> {
-    await this.sock.sendMessage(jid, {
-      delete: { remoteJid: jid, id: messageId, fromMe: true },
-    });
   }
 
   async disconnect(): Promise<void> {

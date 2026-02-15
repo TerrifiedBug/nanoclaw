@@ -31,6 +31,17 @@ export function parseManifest(raw: Record<string, unknown>): PluginManifest {
     hooks: Array.isArray(raw.hooks)
       ? raw.hooks.filter((v): v is string => typeof v === 'string')
       : [],
+    containerHooks: Array.isArray(raw.containerHooks)
+      ? raw.containerHooks.filter((v): v is string => typeof v === 'string')
+      : [],
+    containerMounts: Array.isArray(raw.containerMounts)
+      ? raw.containerMounts.filter(
+          (v): v is { hostPath: string; containerPath: string } =>
+            typeof v === 'object' && v !== null &&
+            typeof (v as any).hostPath === 'string' &&
+            typeof (v as any).containerPath === 'string',
+        )
+      : [],
     dependencies: raw.dependencies === true,
   };
 }
@@ -58,6 +69,49 @@ export function collectSkillPaths(
     }
   }
   return paths;
+}
+
+/** Collect container hook files from plugins that declare containerHooks */
+export function collectContainerHookPaths(
+  plugins: LoadedPlugin[],
+): Array<{ hostPath: string; name: string }> {
+  const paths: Array<{ hostPath: string; name: string }> = [];
+  for (const plugin of plugins) {
+    for (const hookFile of plugin.manifest.containerHooks || []) {
+      const hostPath = path.join(plugin.dir, hookFile);
+      if (fs.existsSync(hostPath)) {
+        // Use plugin name + filename as unique identifier
+        const filename = path.basename(hookFile);
+        paths.push({ hostPath, name: `${plugin.manifest.name}--${filename}` });
+      } else {
+        logger.warn(
+          { plugin: plugin.manifest.name, hookFile },
+          'Declared container hook file not found',
+        );
+      }
+    }
+  }
+  return paths;
+}
+
+/** Collect additional container mounts from plugins */
+export function collectContainerMounts(
+  plugins: LoadedPlugin[],
+): Array<{ hostPath: string; containerPath: string }> {
+  const mounts: Array<{ hostPath: string; containerPath: string }> = [];
+  for (const plugin of plugins) {
+    for (const mount of plugin.manifest.containerMounts || []) {
+      if (fs.existsSync(mount.hostPath)) {
+        mounts.push(mount);
+      } else {
+        logger.warn(
+          { plugin: plugin.manifest.name, hostPath: mount.hostPath },
+          'Declared container mount path does not exist',
+        );
+      }
+    }
+  }
+  return mounts;
 }
 
 /** Merge all plugins' mcp.json fragments into one config */
@@ -136,6 +190,14 @@ export class PluginRegistry {
 
   getSkillPaths(): Array<{ hostPath: string; name: string }> {
     return collectSkillPaths(this.plugins);
+  }
+
+  getContainerHookPaths(): Array<{ hostPath: string; name: string }> {
+    return collectContainerHookPaths(this.plugins);
+  }
+
+  getContainerMounts(): Array<{ hostPath: string; containerPath: string }> {
+    return collectContainerMounts(this.plugins);
   }
 
   getMergedMcpConfig(rootMcpPath?: string): { mcpServers: Record<string, any> } {

@@ -58,6 +58,45 @@ interface SDKUserMessage {
 const IPC_INPUT_DIR = '/workspace/ipc/input';
 const IPC_INPUT_CLOSE_SENTINEL = path.join(IPC_INPUT_DIR, '_close');
 const IPC_POLL_MS = 500;
+const PLUGIN_HOOKS_DIR = '/workspace/plugin-hooks';
+
+interface PluginHookModule {
+  register(ctx: { groupFolder: string; env: Record<string, string | undefined> }): Record<string, Array<{ matcher?: string; hooks: HookCallback[] }>>;
+}
+
+/**
+ * Discover and load plugin hook modules from /workspace/plugin-hooks/.
+ * Each module exports a register() function that returns SDK hook entries.
+ */
+async function loadPluginHooks(
+  groupFolder: string,
+  env: Record<string, string | undefined>,
+): Promise<Record<string, Array<{ matcher?: string; hooks: HookCallback[] }>>> {
+  const merged: Record<string, Array<{ matcher?: string; hooks: HookCallback[] }>> = {};
+
+  if (!fs.existsSync(PLUGIN_HOOKS_DIR)) return merged;
+
+  const files = fs.readdirSync(PLUGIN_HOOKS_DIR).filter(f => f.endsWith('.js'));
+  for (const file of files) {
+    try {
+      const mod = await import(path.join(PLUGIN_HOOKS_DIR, file)) as PluginHookModule;
+      if (typeof mod.register !== 'function') {
+        log(`Plugin hook ${file}: no register() export, skipping`);
+        continue;
+      }
+      const hooks = mod.register({ groupFolder, env });
+      for (const [event, entries] of Object.entries(hooks)) {
+        if (!merged[event]) merged[event] = [];
+        merged[event].push(...entries);
+      }
+      log(`Plugin hook loaded: ${file}`);
+    } catch (err) {
+      log(`Failed to load plugin hook ${file}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  return merged;
+}
 
 // Capture secrets before removing them from process.env.
 // The SDK receives them via the `env` option; child processes won't see them.
@@ -400,6 +439,22 @@ async function runQuery(
     log(`Additional directories: ${extraDirs.join(', ')}`);
   }
 
+  // Load plugin-contributed SDK hooks
+  const pluginHooks = await loadPluginHooks(containerInput.groupFolder, sdkEnv);
+
+  // Build merged hooks: core hooks + plugin hooks
+  const mergedHooks: Record<string, Array<{ matcher?: string; hooks: HookCallback[] }>> = {
+    PreToolUse: [
+      { matcher: 'Bash', hooks: [createSanitizeBashHook()] },
+      { matcher: 'Read', hooks: [createSecretPathBlockHook()] },
+    ],
+    PreCompact: [{ hooks: [createPreCompactHook()] }],
+  };
+  for (const [event, entries] of Object.entries(pluginHooks)) {
+    if (!mergedHooks[event]) mergedHooks[event] = [];
+    mergedHooks[event].push(...entries);
+  }
+
   for await (const message of query({
     prompt: stream,
     options: {
@@ -436,13 +491,7 @@ async function runQuery(
           },
         },
       },
-      hooks: {
-        PreToolUse: [
-          { matcher: 'Bash', hooks: [createSanitizeBashHook()] },
-          { matcher: 'Read', hooks: [createSecretPathBlockHook()] },
-        ],
-        PreCompact: [{ hooks: [createPreCompactHook()] }],
-      },
+      hooks: mergedHooks,
     }
   })) {
     messageCount++;

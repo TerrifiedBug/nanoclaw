@@ -279,33 +279,6 @@ export function insertExternalMessage(
   ).run(messageId, chatJid, sender, senderName, text, timestamp, 0);
 }
 
-/**
- * Find messages matching a content pattern.
- * Used by cleanup scripts to locate error messages, etc.
- */
-export function findMessagesByContent(
-  pattern: string,
-): Array<{ id: string; chat_jid: string; content: string; timestamp: string }> {
-  return db
-    .prepare(
-      `SELECT id, chat_jid, content, timestamp FROM messages WHERE content LIKE ? ORDER BY timestamp`,
-    )
-    .all(pattern) as Array<{ id: string; chat_jid: string; content: string; timestamp: string }>;
-}
-
-/**
- * Delete messages by their IDs.
- */
-export function deleteMessagesByIds(ids: Array<{ id: string; chat_jid: string }>): number {
-  const stmt = db.prepare('DELETE FROM messages WHERE id = ? AND chat_jid = ?');
-  let count = 0;
-  for (const { id, chat_jid } of ids) {
-    const result = stmt.run(id, chat_jid);
-    count += result.changes;
-  }
-  return count;
-}
-
 export function getNewMessages(
   jids: string[],
   lastTimestamp: string,

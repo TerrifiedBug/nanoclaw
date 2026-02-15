@@ -6,7 +6,7 @@ vi.mock('./logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-import { parseManifest, collectContainerEnvVars, collectSkillPaths, mergeMcpConfigs, PluginRegistry } from './plugin-loader.js';
+import { parseManifest, collectContainerEnvVars, collectSkillPaths, collectContainerHookPaths, mergeMcpConfigs, PluginRegistry } from './plugin-loader.js';
 
 describe('parseManifest', () => {
   it('parses a valid manifest-only plugin', () => {
@@ -28,7 +28,16 @@ describe('parseManifest', () => {
     const manifest = parseManifest({ name: 'test' });
     expect(manifest.containerEnvVars).toEqual([]);
     expect(manifest.hooks).toEqual([]);
+    expect(manifest.containerHooks).toEqual([]);
     expect(manifest.dependencies).toBe(false);
+  });
+
+  it('parses containerHooks field', () => {
+    const manifest = parseManifest({
+      name: 'claude-mem',
+      containerHooks: ['hooks/post-tool-use.js'],
+    });
+    expect(manifest.containerHooks).toEqual(['hooks/post-tool-use.js']);
   });
 });
 
@@ -70,6 +79,30 @@ describe('collectSkillPaths', () => {
     expect(result).toHaveLength(1);
     expect(result[0].hostPath).toContain('brave-search/skills');
     vi.restoreAllMocks();
+  });
+});
+
+describe('collectContainerHookPaths', () => {
+  it('returns hook files that exist', () => {
+    vi.spyOn(fs, 'existsSync').mockImplementation((p: fs.PathLike) =>
+      String(p).includes('post-tool-use.js'));
+    const plugins = [
+      { manifest: { name: 'claude-mem', containerHooks: ['hooks/post-tool-use.js'] }, dir: '/plugins/claude-mem', hooks: {} },
+      { manifest: { name: 'other', containerHooks: ['hooks/missing.js'] }, dir: '/plugins/other', hooks: {} },
+    ];
+    const result = collectContainerHookPaths(plugins as any);
+    expect(result).toHaveLength(1);
+    expect(result[0].hostPath).toContain('post-tool-use.js');
+    expect(result[0].name).toBe('claude-mem--post-tool-use.js');
+    vi.restoreAllMocks();
+  });
+
+  it('returns empty for plugins without containerHooks', () => {
+    const plugins = [
+      { manifest: { name: 'brave-search' }, dir: '/plugins/brave-search', hooks: {} },
+    ];
+    const result = collectContainerHookPaths(plugins as any);
+    expect(result).toHaveLength(0);
   });
 });
 

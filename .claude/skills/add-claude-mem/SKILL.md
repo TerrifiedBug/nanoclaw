@@ -13,7 +13,7 @@ Run all commands automatically. Only pause if a step fails.
 
 The claude-mem worker daemon runs on the host (port 37777) and stores observations in a SQLite + vector DB at `/root/.claude-mem/`. A socat bridge exposes it to Docker containers via 172.17.0.1:37777.
 
-**Auto-capture:** The agent-runner (`container/agent-runner/src/index.ts`) has a built-in `PostToolUse` SDK hook. When `CLAUDE_MEM_URL` is set, every tool use (Bash, Read, MCP calls, etc.) is automatically saved to the database via `POST /api/memory/save`. No additional setup is needed — setting the env var enables it.
+**Auto-capture:** The agent-runner (`container/agent-runner/src/index.ts`) has a `PostToolUse` SDK hook. When `CLAUDE_MEM_URL` is set, every tool use (Bash, Read, MCP calls, etc.) is automatically saved to the database via `POST /api/memory/save`. No additional setup is needed — setting the env var enables it.
 
 **Search:** Container agents use the `claude-mem` agent skill (`plugins/claude-mem/skills/SKILL.md`) to search past observations via `GET /api/search?query=...&project=nanoclaw-mem`.
 
@@ -206,16 +206,53 @@ grep -q "^CLAUDE_MEM_URL=" .env 2>/dev/null || echo "CLAUDE_MEM_URL=http://172.1
 Create the plugin directory with `plugin.json` and the agent skill:
 
 ```bash
-mkdir -p plugins/claude-mem/skills
+mkdir -p plugins/claude-mem/skills plugins/claude-mem/hooks
 
 cat > plugins/claude-mem/plugin.json << 'PLUGIN_EOF'
 {
   "name": "claude-mem",
   "description": "Persistent cross-session memory",
   "containerEnvVars": ["CLAUDE_MEM_URL"],
+  "containerHooks": ["hooks/post-tool-use.js"],
   "hooks": []
 }
 PLUGIN_EOF
+
+cat > plugins/claude-mem/hooks/post-tool-use.js << 'HOOK_EOF'
+// Claude-mem auto-capture: save tool use observations to the worker API.
+// Loaded by agent-runner as a plugin container hook when CLAUDE_MEM_URL is set.
+
+export function register(ctx) {
+  const url = ctx.env.CLAUDE_MEM_URL;
+  if (!url) return {};
+
+  return {
+    PostToolUse: [{
+      hooks: [async (input) => {
+        const inputStr = typeof input.tool_input === 'string'
+          ? input.tool_input
+          : JSON.stringify(input.tool_input);
+        const responseStr = typeof input.tool_response === 'string'
+          ? input.tool_response
+          : JSON.stringify(input.tool_response);
+        const text = `[${ctx.groupFolder}] Tool: ${input.tool_name}\nInput: ${inputStr.slice(0, 500)}\nOutput: ${responseStr.slice(0, 2000)}`;
+
+        fetch(`${url}/api/memory/save`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text,
+            title: `${input.tool_name} (${ctx.groupFolder})`,
+            project: 'nanoclaw-mem',
+          }),
+        }).catch(() => {});
+
+        return {};
+      }],
+    }],
+  };
+}
+HOOK_EOF
 
 cat > plugins/claude-mem/skills/SKILL.md << 'SKILL_EOF'
 ---

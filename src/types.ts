@@ -50,9 +50,7 @@ export interface NewMessage {
   timestamp: string;
   is_from_me?: boolean;
   is_bot_message?: boolean;
-  /** Raw audio buffer for voice notes (consumed by plugins) */
-  audioBuffer?: Buffer;
-  /** Media type hint: 'voice', 'image', 'video', 'audio', 'document' */
+  /** Media type hint: 'image', 'video', 'audio', 'document' */
   mediaType?: string;
   /** Host path where media file was saved */
   mediaPath?: string;

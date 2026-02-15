@@ -122,7 +122,7 @@ function loadConfig() {
   }
 }
 
-async function transcribeWithOpenAI(audioBuffer, config) {
+async function transcribeWithOpenAI(audioPath, config) {
   if (!config.openai?.apiKey || config.openai.apiKey === '') return null;
 
   const openaiModule = await import('openai');
@@ -130,7 +130,8 @@ async function transcribeWithOpenAI(audioBuffer, config) {
   const { toFile } = openaiModule;
 
   const openai = new OpenAI({ apiKey: config.openai.apiKey });
-  const file = await toFile(audioBuffer, 'voice.ogg', { type: 'audio/ogg' });
+  const buffer = fs.readFileSync(audioPath);
+  const file = await toFile(buffer, 'voice.ogg', { type: 'audio/ogg' });
 
   const transcription = await openai.audio.transcriptions.create({
     file,
@@ -143,45 +144,37 @@ async function transcribeWithOpenAI(audioBuffer, config) {
 
 /**
  * onInboundMessage hook -- transcribe voice notes.
- * The WhatsApp channel sets audioBuffer and mediaType on voice messages.
+ * The WhatsApp channel saves audio files to mediaPath. This hook reads the
+ * saved file and transcribes it. Voice notes have mediaType 'audio' and
+ * content containing '[audio: /workspace/group/media/...]'.
  */
 export async function onInboundMessage(msg, channel) {
-  // Only process voice notes (audio with ptt flag, indicated by mediaType)
-  if (!msg.audioBuffer || msg.mediaType !== 'voice') return msg;
+  // Only process audio messages that have a saved media file
+  if (msg.mediaType !== 'audio' || !msg.mediaPath) return msg;
+
+  // Resolve the host path from the container-relative path
+  // mediaPath is like /workspace/group/media/xyz.ogg — map to groups/<folder>/media/xyz.ogg
+  const hostPath = msg.mediaPath.replace(/^\/workspace\/group\//, path.join(process.cwd(), 'groups', msg.chat_jid.replace(/@.*$/, ''), ''));
+  if (!fs.existsSync(hostPath)) return msg;
 
   const config = loadConfig();
-  if (!config.enabled) {
-    msg.content = msg.content
-      ? `${msg.content}\n${config.fallbackMessage}`
-      : config.fallbackMessage;
-    return msg;
-  }
+  if (!config.enabled) return msg;
 
   try {
     let transcript = null;
     if (config.provider === 'openai') {
-      transcript = await transcribeWithOpenAI(msg.audioBuffer, config);
+      transcript = await transcribeWithOpenAI(hostPath, config);
     }
 
     if (transcript) {
       const trimmed = transcript.trim();
-      msg.content = msg.content
-        ? `${msg.content}\n[Voice: ${trimmed}]`
-        : `[Voice: ${trimmed}]`;
-    } else {
-      msg.content = msg.content
-        ? `${msg.content}\n${config.fallbackMessage}`
-        : config.fallbackMessage;
+      // Replace the [audio: path] annotation with the transcription
+      msg.content = msg.content.replace(/\[audio: [^\]]+\]/, `[Voice: ${trimmed}]`);
     }
   } catch (err) {
     console.error('Transcription plugin error:', err);
-    msg.content = msg.content
-      ? `${msg.content}\n[Voice Message - transcription failed]`
-      : '[Voice Message - transcription failed]';
   }
 
-  // Clear the buffer so it's not held in memory
-  delete msg.audioBuffer;
   return msg;
 }
 ```

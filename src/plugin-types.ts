@@ -9,19 +9,16 @@ export interface PluginManifest {
   containerEnvVars?: string[];
   /** Hook functions this plugin exports */
   hooks?: string[];
+  /** JS files to load as SDK hooks inside agent containers (paths relative to plugin dir) */
+  containerHooks?: string[];
+  /** Additional read-only mounts for agent containers (host paths resolved at load time) */
+  containerMounts?: Array<{ hostPath: string; containerPath: string }>;
   /** Whether this plugin has its own package.json/node_modules */
   dependencies?: boolean;
 }
 
 /** Message passed through onInboundMessage hooks */
-export interface InboundMessage extends NewMessage {
-  /** Raw audio buffer for voice note plugins */
-  audioBuffer?: Buffer;
-  /** Media file path on host (after download) */
-  mediaPath?: string;
-  /** Media type (image, video, audio, document) */
-  mediaType?: string;
-}
+export type InboundMessage = NewMessage;
 
 /** API surface available to plugins */
 export interface PluginContext {

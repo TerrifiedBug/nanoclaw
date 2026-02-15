@@ -104,6 +104,28 @@ function buildVolumeMounts(
     }
   }
 
+  // Plugin container hooks — JS files loaded by agent-runner at startup
+  if (pluginRegistry) {
+    for (const hp of pluginRegistry.getContainerHookPaths()) {
+      mounts.push({
+        hostPath: hp.hostPath,
+        containerPath: `/workspace/plugin-hooks/${hp.name}`,
+        readonly: true,
+      });
+    }
+  }
+
+  // Plugin-declared container mounts (read-only)
+  if (pluginRegistry) {
+    for (const pm of pluginRegistry.getContainerMounts()) {
+      mounts.push({
+        hostPath: pm.hostPath,
+        containerPath: pm.containerPath,
+        readonly: true,
+      });
+    }
+  }
+
   // MCP server config — merge root .mcp.json with plugin mcp.json fragments
   const mcpJsonFile = path.join(projectRoot, '.mcp.json');
   if (pluginRegistry) {
@@ -289,18 +311,6 @@ function buildVolumeMounts(
       });
     }
   }
-
-  // gog CLI config (Google OAuth credentials + tokens) — shared across all containers
-  // Uses data/gogcli/ copy (chowned to UID 1000) rather than ~/.config/gogcli/ (owned by root)
-  const gogConfigDir = path.join(DATA_DIR, 'gogcli');
-  if (fs.existsSync(gogConfigDir)) {
-    mounts.push({
-      hostPath: gogConfigDir,
-      containerPath: '/home/node/.config/gogcli',
-      readonly: true,
-    });
-  }
-
 
   // Mount agent-runner source from host — recompiled on container startup.
   // Allows code changes without rebuilding the Docker image.
