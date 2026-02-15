@@ -112,7 +112,7 @@ Before generating:
 
 - `src/` — no TypeScript source changes
 - `container/` — no Docker image changes
-- `package.json` or `package-lock.json` — no dependency changes
+- Root `package.json` or `package-lock.json` — channel deps go in per-plugin packages
 - Existing plugins — no cross-plugin modifications
 
 ### CAN create/modify:
@@ -171,6 +171,7 @@ The `add-{name}` SKILL.md must:
   "description": "{Platform} channel via {library}",
   "hooks": ["onChannel"],
   "channelPlugin": true,
+  "dependencies": true,
   "authSkill": "setup-{name}"
 }
 ```
@@ -325,7 +326,6 @@ Adds {Platform} as a messaging channel to NanoClaw.
 ## Prerequisites
 
 - NanoClaw must be set up and running (`/setup`)
-{- `npm install {library}` if npm package needed}
 {- Platform-specific prerequisites (bot creation, API keys, etc.)}
 
 ## Install
@@ -345,15 +345,20 @@ Adds {Platform} as a messaging channel to NanoClaw.
 3. Copy channel plugin files into place:
    ```bash
    mkdir -p plugins/channels/{name}
-   cp -r .claude/skills/channels/{name}/files/ plugins/channels/{name}/
+   cp -r .claude/skills/channels/{name}/files/* plugins/channels/{name}/
    ```
 
-4. {If interactive auth needed: run auth.js}
+4. Install plugin dependencies:
+   ```bash
+   cd plugins/channels/{name} && npm install && cd -
+   ```
+
+5. {If interactive auth needed: run auth.js}
    ```bash
    node plugins/channels/{name}/auth.js
    ```
 
-5. Rebuild and restart:
+6. Rebuild and restart:
    ```bash
    npm run build && systemctl restart nanoclaw
    ```
@@ -372,6 +377,31 @@ After the channel connects, use `/add-channel` to register a group/chat on this 
 - Bot not connecting: Check credentials in `.env`
 - Messages not received: Verify chat is registered in `registered_groups` table
 - No response: Check trigger pattern matches (or `requiresTrigger: false` for main)
+
+## Uninstall
+
+To remove the {Platform} channel:
+
+1. **Stop NanoClaw**
+
+2. **Cancel affected tasks:**
+   ```bash
+   sqlite3 store/messages.db "UPDATE scheduled_tasks SET status = 'completed' WHERE chat_jid IN (SELECT jid FROM registered_groups WHERE channel = '{name}');"
+   ```
+
+3. **Remove group registrations:**
+   ```bash
+   sqlite3 store/messages.db "DELETE FROM registered_groups WHERE channel = '{name}';"
+   ```
+
+4. **Remove the plugin directory:**
+   ```bash
+   rm -rf plugins/channels/{name}/
+   ```
+
+5. **Remove credentials from `.env`**
+
+6. **Restart NanoClaw** — group folders and message history are preserved.
 ```
 
 ## Reference: Existing Channel Plugins
