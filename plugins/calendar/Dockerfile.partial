@@ -3,4 +3,4 @@ RUN curl -sL "https://github.com/steipete/gogcli/releases/download/v0.9.0/gogcli
 
 # Build cal-cli for CalDAV support (iCloud, Nextcloud, Fastmail)
 COPY plugins/calendar/cal-cli/ /opt/cal-cli/
-RUN cd /opt/cal-cli && npm install --omit=dev && npm run build && rm -rf src/ tsconfig.json
+RUN cd /opt/cal-cli && npm install && npm run build && npm prune --omit=dev && rm -rf src/ tsconfig.json
