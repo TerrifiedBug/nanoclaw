@@ -9,6 +9,69 @@ Run all commands automatically. Only pause when user action is required (channel
 
 **UX Note:** When asking the user questions, prefer using the `AskUserQuestion` tool instead of just outputting text. This integrates with Claude's built-in question/answer system for a better experience.
 
+## 0. Detect Existing Setup
+
+Before doing anything, check what's already configured:
+
+```bash
+echo "=== SETUP STATE ==="
+[ -d node_modules ] && echo "DEPS: installed" || echo "DEPS: missing"
+(which docker >/dev/null 2>&1 && docker info >/dev/null 2>&1 && echo "CONTAINER_RUNTIME: docker") || (which container >/dev/null 2>&1 && echo "CONTAINER_RUNTIME: apple_container") || echo "CONTAINER_RUNTIME: none"
+(docker image inspect nanoclaw-agent:latest >/dev/null 2>&1 || container image list 2>/dev/null | grep -q nanoclaw-agent) && echo "IMAGE: built" || echo "IMAGE: not_built"
+(grep -q "ANTHROPIC_API_KEY\|CLAUDE_CODE_OAUTH_TOKEN" .env 2>/dev/null) && echo "AUTH: configured" || echo "AUTH: missing"
+ls plugins/channels/*/plugin.json 2>/dev/null | head -1 | xargs -I{} sh -c '
+  DIR=$(dirname "{}")
+  NAME=$(basename "$DIR")
+  [ -f "data/channels/$NAME/auth/creds.json" ] || [ -f "data/channels/$NAME/auth-status.txt" ] && echo "CHANNEL_AUTH: $NAME" || echo "CHANNEL_AUTH: none"
+' 2>/dev/null || echo "CHANNEL_AUTH: no_channels"
+sqlite3 data/messages.db "SELECT COUNT(*) FROM registered_groups WHERE folder = 'main'" 2>/dev/null | grep -q "^[1-9]" && echo "MAIN_GROUP: registered" || echo "MAIN_GROUP: not_registered"
+grep -q "^TZ=" .env 2>/dev/null && echo "TIMEZONE: configured" || echo "TIMEZONE: not_set"
+[ -f ~/.config/nanoclaw/mount-allowlist.json ] && echo "MOUNT_ALLOWLIST: configured" || echo "MOUNT_ALLOWLIST: missing"
+(pgrep -f 'node.*dist/index.js' >/dev/null 2>&1 || launchctl list 2>/dev/null | grep -q nanoclaw || systemctl is-active nanoclaw >/dev/null 2>&1) && echo "SERVICE: running" || echo "SERVICE: not_running"
+```
+
+Based on the results, determine the setup state:
+
+**If everything shows configured/installed/running**: NanoClaw is already fully set up. Tell the user:
+
+> NanoClaw is already set up and running. Here's what I found:
+> - Dependencies: installed
+> - Container runtime: {docker/apple_container}
+> - Container image: built
+> - Claude auth: configured
+> - Channel: {channel_name} (authenticated)
+> - Main group: registered
+> - Service: running
+>
+> What would you like to do?
+
+Use `AskUserQuestion` with options:
+1. **Re-authenticate channel** — Re-run channel auth (e.g., if WhatsApp got disconnected)
+2. **Add another channel or group** — Use `/add-channel`
+3. **Reconfigure from scratch** — Start over from step 1
+4. **Nothing, looks good** — Exit
+
+If they pick option 1: Skip to section 5 (Authenticate Channel).
+If they pick option 2: Tell them to use `/add-channel` instead.
+If they pick option 3: Continue with section 1 below.
+If they pick option 4: Done.
+
+**If partially configured**: Show what's done and what's missing, then start from the first incomplete step. For example:
+
+> NanoClaw is partially set up:
+> - [x] Dependencies installed
+> - [x] Container runtime (Docker)
+> - [x] Container image built
+> - [x] Claude auth configured
+> - [ ] Channel authentication — not yet done
+> - [ ] Main group — not registered
+>
+> I'll continue from where you left off.
+
+Skip completed steps and start from the first missing one.
+
+**If nothing configured** (fresh install): Proceed with section 1 below without asking.
+
 ## 1. Install Dependencies
 
 ```bash
@@ -198,7 +261,7 @@ After installation, continue with authentication below.
 
 Store the chosen channel name — it will be used in later steps (registration, troubleshooting).
 
-### 5b. Channel-specific authentication
+### 5c. Channel-specific authentication
 
 Based on the chosen channel, follow the appropriate auth flow below.
 
