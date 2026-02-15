@@ -48,8 +48,11 @@ COPY container/agent-runner/ ./
 # Build TypeScript
 RUN npm run build
 
-# Remove devDependencies (vitest, etc.) from production image
-RUN npm prune --omit=dev
+# Keep tsc available for entrypoint (recompiles bind-mounted source at startup)
+RUN npm install -g typescript
+
+# Remove vitest from production image but keep @types/node for entrypoint tsc
+RUN npm prune --omit=dev && npm install --save @types/node
 
 # Create workspace directories
 RUN mkdir -p /workspace/group /workspace/global /workspace/extra /workspace/ipc/messages /workspace/ipc/tasks /workspace/ipc/input /workspace/.claude/skills
