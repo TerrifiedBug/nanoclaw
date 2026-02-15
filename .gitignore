@@ -21,7 +21,6 @@ groups/global/*
 # Secrets
 *.keys.json
 .env
-.transcription.config.json
 
 # OS
 .DS_Store
@@ -36,9 +35,3 @@ agents-sdk-docs
 # Plugins (personal config, created by skills)
 plugins/*
 !plugins/.gitkeep
-
-# Plans
-docs/plans/
-
-# One-off scripts
-src/cleanup-*.ts
