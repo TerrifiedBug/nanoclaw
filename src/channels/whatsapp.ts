@@ -148,7 +148,6 @@ export class WhatsAppChannel implements Channel {
     this.sock.ev.on('creds.update', saveCreds);
 
     this.sock.ev.on('messages.upsert', async ({ messages }) => {
-      logger.debug({ count: messages.length }, 'messages.upsert received');
       for (const msg of messages) {
         if (!msg.message) continue;
         const rawJid = msg.key.remoteJid;
@@ -156,7 +155,6 @@ export class WhatsAppChannel implements Channel {
 
         // Translate LID JID to phone JID if applicable
         const chatJid = await this.translateJid(rawJid);
-        logger.debug({ rawJid, chatJid, fromMe: msg.key.fromMe }, 'Processing message');
 
         const timestamp = new Date(
           Number(msg.messageTimestamp) * 1000,
@@ -351,26 +349,21 @@ export class WhatsAppChannel implements Channel {
     // Check local cache first
     const cached = this.lidToPhoneMap[lidUser];
     if (cached) {
-      logger.debug({ lidJid: jid, phoneJid: cached }, 'Translated LID from cache');
+      logger.debug({ lidJid: jid, phoneJid: cached }, 'Translated LID to phone JID (cached)');
       return cached;
     }
 
-    // Query Baileys' signal repository for the LID→PN mapping
+    // Query Baileys' signal repository for the mapping
     try {
-      const repo = (this.sock as any).signalRepository;
-      if (repo?.lidMapping?.getPNForLID) {
-        const pnJid = await repo.lidMapping.getPNForLID(jid);
-        if (pnJid) {
-          // getPNForLID returns "phone:device@s.whatsapp.net" — strip device suffix
-          const phoneUser = pnJid.split(':')[0];
-          const phoneJid = `${phoneUser}@s.whatsapp.net`;
-          this.lidToPhoneMap[lidUser] = phoneJid;
-          logger.info({ lidJid: jid, phoneJid }, 'Translated LID via signal repository');
-          return phoneJid;
-        }
+      const pn = await this.sock.signalRepository?.lidMapping?.getPNForLID(jid);
+      if (pn) {
+        const phoneJid = `${pn.split('@')[0].split(':')[0]}@s.whatsapp.net`;
+        this.lidToPhoneMap[lidUser] = phoneJid;
+        logger.info({ lidJid: jid, phoneJid }, 'Translated LID to phone JID (signalRepository)');
+        return phoneJid;
       }
     } catch (err) {
-      logger.warn({ err, jid }, 'Failed to translate LID via signal repository');
+      logger.debug({ err, jid }, 'Failed to resolve LID via signalRepository');
     }
 
     return jid;
@@ -385,7 +378,6 @@ export class WhatsAppChannel implements Channel {
         const item = this.outgoingQueue.shift()!;
         // Send directly — queued items are already prefixed by sendMessage
         await this.sock.sendMessage(item.jid, { text: item.text });
-        logger.info({ jid: item.jid, length: item.text.length }, 'Queued message sent');
       }
     } finally {
       this.flushing = false;

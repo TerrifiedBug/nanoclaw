@@ -512,7 +512,6 @@ async function main(): Promise<void> {
       const text = formatOutbound(rawText);
       if (text) await whatsapp.sendMessage(jid, text);
     },
-    assistantName: ASSISTANT_NAME,
   });
   startIpcWatcher({
     sendMessage: (jid, text) => whatsapp.sendMessage(jid, text),

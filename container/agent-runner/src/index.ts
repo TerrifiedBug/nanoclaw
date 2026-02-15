@@ -297,7 +297,7 @@ function formatTranscriptMarkdown(messages: ParsedMessage[], title?: string | nu
   lines.push('');
 
   for (const msg of messages) {
-    const sender = msg.role === 'user' ? 'User' : 'Assistant';
+    const sender = msg.role === 'user' ? 'User' : (process.env.ASSISTANT_NAME || 'Assistant');
     const content = msg.content.length > 2000
       ? msg.content.slice(0, 2000) + '...'
       : msg.content;
