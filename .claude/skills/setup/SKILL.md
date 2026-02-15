@@ -18,7 +18,7 @@ echo "=== SETUP STATE ==="
 [ -d node_modules ] && echo "DEPS: installed" || echo "DEPS: missing"
 (which docker >/dev/null 2>&1 && docker info >/dev/null 2>&1 && echo "CONTAINER_RUNTIME: docker") || (which container >/dev/null 2>&1 && echo "CONTAINER_RUNTIME: apple_container") || echo "CONTAINER_RUNTIME: none"
 (docker image inspect nanoclaw-agent:latest >/dev/null 2>&1 || container image list 2>/dev/null | grep -q nanoclaw-agent) && echo "IMAGE: built" || echo "IMAGE: not_built"
-(grep -q "ANTHROPIC_API_KEY\|CLAUDE_CODE_OAUTH_TOKEN" .env 2>/dev/null) && echo "AUTH: configured" || echo "AUTH: missing"
+(grep -q "ANTHROPIC_API_KEY\|CLAUDE_CODE_OAUTH_TOKEN" .env 2>/dev/null || [ -f ~/.claude/.credentials.json ]) && echo "AUTH: configured" || echo "AUTH: missing"
 ls plugins/channels/*/plugin.json 2>/dev/null | head -1 | xargs -I{} sh -c '
   DIR=$(dirname "{}")
   NAME=$(basename "$DIR")
@@ -138,7 +138,19 @@ Tell the user:
 
 ## 3. Configure Claude Authentication
 
-Ask the user:
+First, check if auth is already configured:
+
+```bash
+echo "=== AUTH CHECK ==="
+[ -f ~/.claude/.credentials.json ] && echo "CREDENTIALS_FILE: found" || echo "CREDENTIALS_FILE: missing"
+grep -q "ANTHROPIC_API_KEY" .env 2>/dev/null && echo "API_KEY: found" || echo "API_KEY: missing"
+grep -q "CLAUDE_CODE_OAUTH_TOKEN" .env 2>/dev/null && echo "OAUTH_TOKEN: found" || echo "OAUTH_TOKEN: missing"
+```
+
+**If any auth method is found**, tell the user and skip to section 4:
+> Claude authentication is already configured. Moving on.
+
+**If no auth found**, ask the user:
 > Do you want to use your **Claude subscription** (Pro/Max) or an **Anthropic API key**?
 
 ### Option 1: Claude Subscription (Recommended)
@@ -148,14 +160,19 @@ Tell the user:
 > ```
 > claude setup-token
 > ```
-> A browser window will open for you to log in. Once authenticated, the token will be displayed in your terminal. Either:
-> 1. Paste it here and I'll add it to `.env` for you, or
-> 2. Add it to `.env` yourself as `CLAUDE_CODE_OAUTH_TOKEN=<your-token>`
+> A browser window will open for you to log in. Once authenticated, the credentials are saved to `~/.claude/.credentials.json` and containers will pick them up automatically.
+>
+> Alternatively, you can paste the OAuth token here and I'll add it to `.env`.
 
 If they give you the token, add it to `.env`. **Never echo the full token in commands or output** — use the Write tool to write the `.env` file directly, or tell the user to add it themselves:
 
 ```bash
 echo "CLAUDE_CODE_OAUTH_TOKEN=<token>" > .env
+```
+
+If they ran `claude setup-token` or `claude login` successfully, verify:
+```bash
+[ -f ~/.claude/.credentials.json ] && echo "Credentials file found — auth is configured" || echo "No credentials file found"
 ```
 
 ### Option 2: API Key
