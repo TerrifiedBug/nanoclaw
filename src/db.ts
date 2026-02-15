@@ -243,7 +243,7 @@ export function storeMessage(msg: NewMessage): void {
 }
 
 /**
- * Store a message directly (for non-WhatsApp channels that don't use Baileys proto).
+ * Store a message directly (for channels that provide plain message objects).
  */
 export function storeMessageDirect(msg: {
   id: string;
@@ -270,7 +270,7 @@ export function storeMessageDirect(msg: {
 }
 
 /**
- * Store an externally-originated message (plain strings, no Baileys dependency).
+ * Store an externally-originated message (plain strings, no channel SDK dependency).
  * Used by plugins (webhooks, channels, etc.) to inject messages into the
  * message store so the polling loop picks them up like any other message.
  */

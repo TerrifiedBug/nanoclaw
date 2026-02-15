@@ -15,9 +15,9 @@ export interface PluginManifest {
   containerMounts?: Array<{ hostPath: string; containerPath: string }>;
   /** Whether this plugin has its own package.json/node_modules */
   dependencies?: boolean;
-  /** True if this plugin provides a channel (WhatsApp, Telegram, etc.) */
+  /** True if this plugin provides a channel (e.g. WhatsApp, Discord) */
   channelPlugin?: boolean;
-  /** Skill name for interactive auth setup (e.g. "setup-whatsapp") */
+  /** Skill name for interactive auth setup (e.g. "setup-whatsapp", "add-discord") */
   authSkill?: string;
   /** Which channel types this plugin applies to. Default: ["*"] (all) */
   channels?: string[];

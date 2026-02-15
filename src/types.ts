@@ -37,7 +37,7 @@ export interface RegisteredGroup {
   folder: string;
   trigger: string;
   added_at: string;
-  channel?: string; // Which channel plugin registered this group (e.g. 'whatsapp')
+  channel?: string; // Which channel plugin registered this group (e.g. 'whatsapp', 'discord')
   containerConfig?: ContainerConfig;
   requiresTrigger?: boolean; // Default: true for groups, false for solo chats
 }
