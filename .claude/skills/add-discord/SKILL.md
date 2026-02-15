@@ -37,10 +37,11 @@ Wait for the user to provide the bot token.
 
 ## Install
 
-1. Install discord.js:
+1. Install discord.js (per-plugin dependency):
    ```bash
-   npm install discord.js
+   cd plugins/channels/discord && npm install && cd -
    ```
+   The plugin has its own `package.json` — dependencies are isolated from the core.
 
 2. Check if plugin files exist:
    ```bash
@@ -102,3 +103,28 @@ The easiest way to get a channel ID is dynamic discovery:
 - **Messages not received**: Verify registration: `sqlite3 store/messages.db "SELECT * FROM registered_groups WHERE jid LIKE 'dc:%'"`
 - **No response in group channel**: Check trigger pattern matches or set `requiresTrigger: false`
 - **Bot can't send messages**: Ensure bot has `Send Messages` permission in the channel
+
+## Uninstall
+
+To remove the Discord channel:
+
+1. **Stop NanoClaw**
+
+2. **Cancel affected tasks** (if any scheduled tasks target Discord groups):
+   ```bash
+   sqlite3 store/messages.db "UPDATE scheduled_tasks SET status = 'completed' WHERE chat_jid IN (SELECT jid FROM registered_groups WHERE channel = 'discord');"
+   ```
+
+3. **Remove group registrations:**
+   ```bash
+   sqlite3 store/messages.db "DELETE FROM registered_groups WHERE channel = 'discord';"
+   ```
+
+4. **Remove the plugin directory:**
+   ```bash
+   rm -rf plugins/channels/discord/
+   ```
+
+5. **Remove `DISCORD_BOT_TOKEN` from `.env`**
+
+6. **Restart NanoClaw** — group folders and message history are preserved.
