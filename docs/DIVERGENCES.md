@@ -83,7 +83,7 @@ This document tracks all legitimate divergences between our fork's `main` branch
 
 | Skill | Categories | Summary |
 |-------|------------|---------|
-| `setup/SKILL.md` | DOCKER, OTHER | Headless/Linux QR auth support, timezone configuration step, systemd service support, ASSISTANT_NAME env var step |
+| `setup/SKILL.md` | DOCKER, PLUGIN, OTHER | Major divergence after upstream PR #258 rewrote setup as numbered shell scripts. Our fork keeps monolithic SKILL.md with channel-agnostic plugin flow, headless/Linux QR auth, systemd support, ASSISTANT_NAME env var step. Upstream scripts hardcode WhatsApp deps and auth. |
 | `customize/SKILL.md` | PLUGIN, DOCKER | Plugin architecture docs, Linux service management |
 | `add-whatsapp-voice/SKILL.md` | PLUGIN, MEDIA | Renamed from `add-voice-transcription`; rewritten for plugin architecture using `mediaHostPath` |
 
@@ -112,9 +112,16 @@ This document tracks all legitimate divergences between our fork's `main` branch
 | `set-model` | Change Claude model for containers |
 | `update-nanoclaw` | Upstream sync management |
 
-### Unchanged from upstream (6)
+### Unchanged from upstream (5)
 
-`add-gmail`, `add-parallel`, `add-telegram-swarm`, `add-telegram`, `convert-to-docker`, `debug`, `x-integration`
+`add-gmail`, `add-parallel`, `add-telegram-swarm`, `add-telegram`, `x-integration`
+
+### Superseded by our architecture (2)
+
+| Skill | Why |
+|-------|-----|
+| `convert-to-docker` | Our fork uses Docker natively via `container-runtime.ts`; this skill is redundant but kept for upstream compat |
+| `debug` | Upstream version is WhatsApp-specific; ours is channel-agnostic |
 
 ## Not in Fork (upstream-only, intentionally excluded)
 
@@ -142,6 +149,16 @@ When these merge and we sync, the following divergences collapse:
 | #247 | `src/index.ts` consecutive error tracking (BUGFIX) |
 | #248 | `container/agent-runner/src/ipc-mcp-stdio.ts` task warning (BUGFIX) |
 
+### Upstream PR #258 — **merged, not synced** (2026-02-15)
+
+[qwibitai/nanoclaw#258](https://github.com/qwibitai/nanoclaw/pull/258) — `feat: add setup skill with scripted steps`
+
+Replaces monolithic `setup/SKILL.md` with numbered shell scripts (`01-check-environment.sh` through `09-verify.sh`) with structured status output. Also touches `package.json`, `package-lock.json`, and `src/router.ts`.
+
+**Cannot sync because:** Scripts hardcode WhatsApp (`@whiskeysockets/baileys` dep checks, `04-auth-whatsapp.sh`). Our channel-agnostic plugin architecture handles auth, deps, and registration per-channel-plugin. The scripted pattern (structured output parsing) is worth adopting long-term but requires rewriting all scripts for our architecture.
+
+**Impact:** `setup/SKILL.md` is now a major divergence. `package.json` and `src/router.ts` changes need individual review on next upstream sync.
+
 ### Upstream PR #235 — **merged and synced** (2026-02-15)
 
 [qwibitai/nanoclaw#235](https://github.com/qwibitai/nanoclaw/pull/235) — `feat: add is_bot_message column and support dedicated phone numbers`
@@ -165,3 +182,5 @@ Collapsed divergences: `src/env.ts`, `src/db.ts` is_bot_message, `src/config.ts`
 | Read receipts | Enhancement |
 | Security hooks (`security-hooks.ts`) | New capability (complementary to upstream's trust model) |
 | Env file quoting | Only applies to our fork's env mount mechanism |
+| Setup skill (scripted steps) | Upstream PR #258 hardcodes WhatsApp; our plugin architecture needs channel-agnostic scripts |
+| Per-group webhook routing | Enhancement — upstream uses single global webhook secret |
