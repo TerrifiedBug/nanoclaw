@@ -6,7 +6,7 @@ This document tracks all legitimate divergences between our fork's `main` branch
 - `main` = clean NanoClaw as if fresh install (divergence analysis compares this vs upstream)
 - `tars` = personal branch with installed plugins that may modify source (Dockerfile, gitignore, etc.)
 
-**Last full audit:** 2026-02-15
+**Last full audit:** 2026-02-15 (updated after PR #235 merged upstream and synced into fork)
 
 ## Divergence Categories
 
@@ -16,7 +16,7 @@ This document tracks all legitimate divergences between our fork's `main` branch
 | DOCKER | Docker/Linux support (runtime abstraction, mount permissions, headless) |
 | BUGFIX | Bug fixes not yet upstreamed |
 | SECURITY | Security hardening (secret isolation, prompt injection, path blocking) |
-| ASSISTANT_NAME | Configurable assistant name via `$ASSISTANT_NAME` env var (**pending upstream: PR #235**) |
+| ~~ASSISTANT_NAME~~ | ~~Configurable assistant name~~ — **collapsed: merged via PR #235** |
 | TASK | Scheduled task improvements (model selection, error notifications) |
 | MEDIA | Media download pipeline (image/video/audio/document) |
 | OTHER | Minor improvements (read receipts, DRY refactors) |
@@ -25,27 +25,26 @@ This document tracks all legitimate divergences between our fork's `main` branch
 
 | File | Status | Categories | Summary |
 |------|--------|------------|---------|
-| `src/index.ts` | Modified | PLUGIN, DOCKER, BUGFIX, ASSISTANT_NAME, TASK | Plugin lifecycle, per-group triggers, consecutive error tracking, message dedup, heartbeat typing |
-| `src/config.ts` | Modified | ASSISTANT_NAME, TASK, PLUGIN | `.env` reading, `ASSISTANT_HAS_OWN_NUMBER`, `SCHEDULED_TASK_IDLE_TIMEOUT`, `createTriggerPattern()` |
+| `src/index.ts` | Modified | PLUGIN, DOCKER, BUGFIX, TASK | Plugin lifecycle, per-group triggers, consecutive error tracking, message dedup, heartbeat typing |
+| `src/config.ts` | Modified | TASK, PLUGIN | `SCHEDULED_TASK_IDLE_TIMEOUT`, `createTriggerPattern()` |
 | `src/container-runner.ts` | Modified | PLUGIN, DOCKER, SECURITY, TASK, BUGFIX | Plugin mounts/hooks/MCP merge, runtime abstraction, env file quoting, OAuth sync |
 | `src/container-runtime.ts` | **New** | DOCKER | Runtime abstraction (Docker vs Apple Container), orphan cleanup, mount permissions |
-| `src/db.ts` | Modified | BUGFIX, TASK, PLUGIN | `is_bot_message` flag, `>=` timestamp fix, `insertExternalMessage()`, `claimTask()`, model column |
-| `src/env.ts` | **New** | SECURITY | `.env` reader that never pollutes `process.env` |
-| `src/ipc.ts` | Modified | ASSISTANT_NAME, TASK | Removed manual prefix, added model field |
+| `src/db.ts` | Modified | BUGFIX, TASK, PLUGIN | `>=` timestamp fix, `insertExternalMessage()`, `claimTask()`, model column |
+| `src/ipc.ts` | Modified | TASK | Model field |
 | `src/plugin-loader.ts` | **New** | PLUGIN | Plugin discovery, manifest parsing, env var collection, MCP merging, hook lifecycle |
 | `src/plugin-types.ts` | **New** | PLUGIN | TypeScript interfaces for plugin system |
-| `src/router.ts` | Modified | ASSISTANT_NAME | Removed channel arg and prefix logic (moved to channel layer) |
+| `src/router.ts` | **In sync** | — | Prefix logic now matches upstream (moved to channel layer by PR #235) |
 | `src/task-scheduler.ts` | Modified | TASK, BUGFIX | `claimTask()`, shorter idle timeout, model selection, error notifications |
-| `src/types.ts` | Modified | MEDIA, ASSISTANT_NAME, TASK, BUGFIX, PLUGIN | `is_bot_message`, media fields, model, async `OnInboundMessage` |
-| `src/channels/whatsapp.ts` | Modified | MEDIA, ASSISTANT_NAME, BUGFIX, OTHER | Media download, centralized prefix, bot detection, read receipts, queue flush fix |
+| `src/types.ts` | Modified | MEDIA, TASK, PLUGIN | Media fields, model, async `OnInboundMessage` |
+| `src/channels/whatsapp.ts` | Modified | MEDIA, OTHER | Media download, read receipts |
 
 ## Tests
 
 | File | Status | Categories |
 |------|--------|------------|
-| `src/channels/whatsapp.test.ts` | Modified | ASSISTANT_NAME, MEDIA, BUGFIX |
+| `src/channels/whatsapp.test.ts` | Modified | MEDIA |
 | `src/db.test.ts` | Modified | BUGFIX |
-| `src/formatting.test.ts` | Modified | ASSISTANT_NAME, PLUGIN |
+| `src/formatting.test.ts` | Modified | PLUGIN |
 | `src/plugin-loader.test.ts` | **New** | PLUGIN |
 
 ## Container / Agent Runner
@@ -70,8 +69,8 @@ This document tracks all legitimate divergences between our fork's `main` branch
 | `plugins/.gitkeep` | **New** | PLUGIN | Tracks empty plugins directory |
 | `CLAUDE.md` | Modified | SECURITY | Added security section referencing `docs/SECURITY.md` |
 | `README.md` | **In sync** | — | Synced after upstream added repo-tokens badge |
-| `groups/global/CLAUDE.md` | Modified | ASSISTANT_NAME | `Andy` -> `$ASSISTANT_NAME` env var |
-| `groups/main/CLAUDE.md` | Modified | ASSISTANT_NAME, SECURITY | `$ASSISTANT_NAME` + anti-prompt-injection security rules |
+| `groups/global/CLAUDE.md` | Modified | OTHER | References `$ASSISTANT_NAME` env var (upstream still hardcodes "Andy") |
+| `groups/main/CLAUDE.md` | Modified | SECURITY, OTHER | Anti-prompt-injection rules, `$ASSISTANT_NAME` env var, generic example triggers |
 | `docs/DIVERGENCES.md` | **New** | OTHER | This file — fork divergence tracking |
 | `package-lock.json` | Modified | OTHER | Platform-specific (Linux vs macOS optional deps) |
 
@@ -136,23 +135,11 @@ When these merge and we sync, the following divergences collapse:
 | #247 | `src/index.ts` consecutive error tracking (BUGFIX) |
 | #248 | `container/agent-runner/src/ipc-mcp-stdio.ts` task warning (BUGFIX) |
 
-### Upstream PR #235 (testing for maintainer)
+### Upstream PR #235 — **merged and synced** (2026-02-15)
 
 [qwibitai/nanoclaw#235](https://github.com/qwibitai/nanoclaw/pull/235) — `feat: add is_bot_message column and support dedicated phone numbers`
 
-When this merges and we sync, the following divergences collapse:
-
-| Current Divergence | Why It Collapses |
-|--------------------|------------------|
-| `src/env.ts` (SECURITY) | PR adds upstream `.env` reader (uses `dotenv`) |
-| `src/db.ts` `is_bot_message` (BUGFIX) | PR adds same column + migration |
-| `src/config.ts` `ASSISTANT_HAS_OWN_NUMBER` (ASSISTANT_NAME) | PR adds this env var upstream |
-| `src/router.ts` prefix removal (ASSISTANT_NAME) | PR moves prefix to WhatsApp channel |
-| `src/ipc.ts` prefix removal (ASSISTANT_NAME) | PR removes manual prefix upstream |
-| `src/channels/whatsapp.ts` bot detection (BUGFIX) | PR adds bot detection via `is_bot_message` |
-| `src/channels/whatsapp.ts` prefix + queue flush (ASSISTANT_NAME, BUGFIX) | PR centralizes prefix in channel + fixes flush |
-| `src/types.ts` `is_bot_message` (BUGFIX) | PR adds this field upstream |
-| `groups/global/CLAUDE.md` name (ASSISTANT_NAME) | PR makes name configurable |
+Collapsed divergences: `src/env.ts`, `src/db.ts` is_bot_message, `src/config.ts` ASSISTANT_HAS_OWN_NUMBER, `src/router.ts` prefix logic, `src/ipc.ts` prefix logic, `src/channels/whatsapp.ts` bot detection + prefix + queue flush, `src/types.ts` is_bot_message. The entire ASSISTANT_NAME category is now upstream.
 
 ### After all pending PRs merge
 
@@ -171,4 +158,3 @@ When this merges and we sync, the following divergences collapse:
 | Read receipts | Enhancement |
 | Security hooks (`security-hooks.ts`) | New capability (complementary to upstream's trust model) |
 | Env file quoting | Only applies to our fork's env mount mechanism |
-| Queue flush fix | Already part of PR #235 (authored by maintainer) |
