@@ -281,6 +281,56 @@ Container-side components (skills, hooks, MCP configs) are mounted read-only and
 | `containerHooks` | Agent container (read-only mount) | Sandboxed |
 | `mcp.json` | Merged config mounted into container | Sandboxed |
 
+## Source Code Changes
+
+The plugin system adds two new files and modifies five existing files. Total footprint: ~280 lines of new code.
+
+### New Files
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `src/plugin-loader.ts` | ~230 | Plugin discovery, manifest parsing, `PluginRegistry` class, hook execution, env/skill/mount/MCP collection |
+| `src/plugin-types.ts` | ~45 | TypeScript interfaces: `PluginManifest`, `PluginContext`, `PluginHooks`, `LoadedPlugin` |
+
+### Modified Files
+
+**`src/index.ts`** — Plugin lifecycle integration into the main process:
+- Import and call `loadPlugins()` at startup
+- Pass `PluginRegistry` to the container runner via `setPluginRegistry()`
+- Build `PluginContext` (wiring `insertMessage`, `sendMessage`, `getRegisteredGroups`, `getMainChannelJid`, `logger`)
+- Call `registry.startup(ctx)` after WhatsApp connects
+- Call `registry.shutdown()` on graceful exit
+- Run `registry.runInboundHooks(msg, channel)` on every inbound message before queueing
+- Register plugin channels alongside WhatsApp
+
+**`src/container-runner.ts`** — Container spawn configuration:
+- Query `pluginRegistry.getContainerEnvVars()` to build the env var filter list
+- Query `pluginRegistry.getSkillPaths()` and mount each plugin's `container-skills/` read-only at `/workspace/.claude/skills/{name}`
+- Query `pluginRegistry.getContainerHookPaths()` and mount hook JS files at `/workspace/plugin-hooks/{name}`
+- Query `pluginRegistry.getContainerMounts()` for additional read-only mounts
+- Call `pluginRegistry.getMergedMcpConfig()` to write a unified MCP config into the container
+
+**`src/types.ts`** — Type changes:
+- `OnInboundMessage` callback made `async` (returns `Promise`) to support async plugin hooks
+
+**`container/Dockerfile`** — Container image:
+- Added `jq` to system packages (used by some plugin skills)
+- Added `/workspace/.claude/skills` directory creation
+- Added env-dir sourcing in entrypoint (plugin env vars)
+
+**`container/agent-runner/src/index.ts`** — Agent runner inside containers:
+- Scan `/workspace/plugin-hooks/` for JS files at startup
+- Import each hook file and call its `register(ctx)` function
+- Merge returned SDK hook registrations into the agent's hook chain
+
+### Supporting Changes
+
+| File | Change |
+|------|--------|
+| `.gitignore` | Added `plugins/*`, `!plugins/.gitkeep` |
+| `plugins/.gitkeep` | Empty file to track the directory |
+| `src/plugin-loader.test.ts` | Unit tests for manifest parsing, env var collection, skill path discovery, MCP merging |
+
 ## Example: Minimal Plugin (Weather)
 
 A weather plugin that gives agents access to weather data via a container skill, using free public APIs (no API key required).
