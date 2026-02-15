@@ -1,41 +1,36 @@
 # Fork Divergences from Upstream
 
-This document tracks all legitimate divergences between our fork's `main` branch and `upstream/main` (gavrielc/nanoclaw). It exists so future divergence checks can be done quickly without a full codebase scan.
+This document tracks all divergences between our fork's `main` branch and `upstream/main` (gavrielc/nanoclaw). Upstream's [CONTRIBUTING.md](https://github.com/gavrielc/nanoclaw/blob/main/CONTRIBUTING.md) accepts: **bug fixes, security fixes, simplifications**. Features/capabilities should be skills.
 
-**Branch strategy:**
-- `main` = clean NanoClaw as if fresh install (divergence analysis compares this vs upstream)
-- `tars` = personal branch with installed plugins that may modify source (Dockerfile, gitignore, etc.)
-
-**Last full audit:** 2026-02-15 (updated after PR #235 merged upstream and synced into fork)
+**Last full audit:** 2026-02-15
 
 ## Divergence Categories
 
 | Code | Description |
 |------|-------------|
 | PLUGIN | Plugin system (loader, hooks, skills, MCP merge, env vars) |
-| DOCKER | Docker/Linux support (runtime abstraction, mount permissions, headless) |
-| BUGFIX | Bug fixes not yet upstreamed |
-| SECURITY | Security hardening (secret isolation, prompt injection, path blocking) |
-| ~~ASSISTANT_NAME~~ | ~~Configurable assistant name~~ — **collapsed: merged via PR #235** |
+| DOCKER | Docker/Linux support (runtime abstraction, mount permissions) |
+| BUGFIX | Bug fixes (PR-able per upstream guidelines) |
+| SECURITY | Security hardening (PR-able as "security fixes") |
 | TASK | Scheduled task improvements (model selection, error notifications) |
 | MEDIA | Media download pipeline (image/video/audio/document) |
-| OTHER | Minor improvements (read receipts, DRY refactors) |
+| OTHER | Minor improvements (read receipts, typing indicator, DRY refactors) |
 
 ## Source Code
 
 | File | Status | Categories | Summary |
 |------|--------|------------|---------|
-| `src/index.ts` | Modified | PLUGIN, DOCKER, BUGFIX, TASK | Plugin lifecycle, per-group triggers, consecutive error tracking, message dedup, heartbeat typing |
+| `src/index.ts` | Modified | PLUGIN, DOCKER, BUGFIX, TASK, OTHER | Plugin lifecycle, per-group triggers, consecutive error tracking, message dedup, heartbeat typing |
 | `src/config.ts` | Modified | TASK, PLUGIN | `SCHEDULED_TASK_IDLE_TIMEOUT`, `createTriggerPattern()` |
-| `src/container-runner.ts` | Modified | PLUGIN, DOCKER, SECURITY, TASK, BUGFIX | Plugin mounts/hooks/MCP merge, runtime abstraction, env file quoting, OAuth sync |
+| `src/container-runner.ts` | Modified | PLUGIN, DOCKER, SECURITY, TASK, BUGFIX | Plugin mounts/hooks/MCP merge, runtime abstraction, env file quoting, OAuth sync, recursive skill copy |
 | `src/container-runtime.ts` | **New** | DOCKER | Runtime abstraction (Docker vs Apple Container), orphan cleanup, mount permissions |
 | `src/db.ts` | Modified | BUGFIX, TASK, PLUGIN | `>=` timestamp fix, `insertExternalMessage()`, `claimTask()`, model column |
 | `src/ipc.ts` | Modified | TASK | Model field |
 | `src/plugin-loader.ts` | **New** | PLUGIN | Plugin discovery, manifest parsing, env var collection, MCP merging, hook lifecycle |
 | `src/plugin-types.ts` | **New** | PLUGIN | TypeScript interfaces for plugin system |
-| `src/task-scheduler.ts` | Modified | TASK, BUGFIX | `claimTask()`, shorter idle timeout, model selection, error notifications |
+| `src/task-scheduler.ts` | Modified | TASK, BUGFIX | `claimTask()`, shorter idle timeout, model selection, error notifications, `<internal>` stripping |
 | `src/types.ts` | Modified | MEDIA, TASK, PLUGIN | Media fields, model, async `OnInboundMessage` |
-| `src/channels/whatsapp.ts` | Modified | MEDIA, OTHER | Media download, read receipts |
+| `src/channels/whatsapp.ts` | Modified | MEDIA, BUGFIX, OTHER | Media download, presence update fix, read receipts |
 
 ## Tests
 
@@ -52,11 +47,11 @@ This document tracks all legitimate divergences between our fork's `main` branch
 |------|--------|------------|---------|
 | `container/Dockerfile` | Modified | PLUGIN | Added `jq`, skills directory, env-dir sourcing in entrypoint |
 | `container/build.sh` | Modified | DOCKER | Auto-detects Docker vs Apple Container runtime |
-| `container/agent-runner/src/index.ts` | Modified | PLUGIN, SECURITY, TASK | Plugin hook loading, secret scrubbing, model selection, error detection |
-| `container/agent-runner/src/ipc-mcp-stdio.ts` | Modified | BUGFIX | Duplicate task creation warning |
+| `container/agent-runner/src/index.ts` | Modified | PLUGIN, SECURITY, TASK, BUGFIX | Plugin hooks, secret scrubbing, model selection, SDK error detection, hardcoded name fix |
+| `container/agent-runner/src/ipc-mcp-stdio.ts` | Modified | BUGFIX, TASK | Duplicate task warning, model parameter |
 | `container/agent-runner/src/security-hooks.ts` | **New** | SECURITY | Bash sanitization, `/proc/*/environ` blocking, `/tmp/input.json` blocking |
 | `container/agent-runner/src/security-hooks.test.ts` | **New** | SECURITY | Tests for security hooks |
-| `container/agent-runner/tsconfig.json` | Modified | OTHER | Exclude test files from production build |
+| `container/agent-runner/tsconfig.json` | Modified | BUGFIX | Exclude test files from production build |
 | `container/agent-runner/package.json` | Modified | SECURITY | Added vitest for testing |
 | `container/agent-runner/package-lock.json` | Modified | OTHER | Vitest dependency tree |
 
@@ -64,12 +59,12 @@ This document tracks all legitimate divergences between our fork's `main` branch
 
 | File | Status | Categories | Summary |
 |------|--------|------------|---------|
-| `.gitignore` | Modified | PLUGIN | `plugins/*` and `!plugins/.gitkeep` |
+| `.gitignore` | Modified | PLUGIN, DOCKER | `plugins/*`, `!plugins/.gitkeep`, `socket:*` |
 | `plugins/.gitkeep` | **New** | PLUGIN | Tracks empty plugins directory |
 | `CLAUDE.md` | Modified | SECURITY | Added security section referencing `docs/SECURITY.md` |
-| `groups/global/CLAUDE.md` | Modified | OTHER | References `$ASSISTANT_NAME` env var (upstream still hardcodes "Andy") |
-| `groups/main/CLAUDE.md` | Modified | SECURITY, OTHER | Anti-prompt-injection rules, `$ASSISTANT_NAME` env var, generic example triggers |
-| `docs/DIVERGENCES.md` | **New** | OTHER | This file — fork divergence tracking |
+| `groups/global/CLAUDE.md` | Modified | BUGFIX | `$ASSISTANT_NAME` env var (upstream hardcodes "Andy" despite PR #235 making it configurable) |
+| `groups/main/CLAUDE.md` | Modified | SECURITY, BUGFIX | Anti-prompt-injection rules, `$ASSISTANT_NAME`, generic example triggers |
+| `docs/DIVERGENCES.md` | **New** | OTHER | This file |
 | `package-lock.json` | Modified | OTHER | Platform-specific (Linux vs macOS optional deps) |
 
 ## Skills (`.claude/skills/`)
@@ -107,52 +102,69 @@ This document tracks all legitimate divergences between our fork's `main` branch
 
 `add-gmail`, `add-parallel`, `add-telegram-swarm`, `add-telegram`, `convert-to-docker`, `debug`, `x-integration`
 
-## Not in Fork (upstream-only, intentionally excluded)
+---
 
-None — all upstream files are now synced.
+## Upstream PRs
 
-*Previously excluded: `repo-tokens/`, `update-tokens.yml`, `.github/workflows/test.yml` — all synced as of 2026-02-15.*
+### Open PRs
 
-## Pending Upstream Changes
+| PR | Title | Type | Status |
+|----|-------|------|--------|
+| [#234](https://github.com/qwibitai/nanoclaw/pull/234) | Docker runtime support alongside Apple Container | Refactor | Open |
+| [#245](https://github.com/qwibitai/nanoclaw/pull/245) | `>=` timestamp fix + dedup guard | Bug fix | Open |
+| [#246](https://github.com/qwibitai/nanoclaw/pull/246) | Exclude test files from agent-runner build | Simplification | Open |
+| [#247](https://github.com/qwibitai/nanoclaw/pull/247) | Consecutive error tracking | Bug fix | Open |
+| [#248](https://github.com/qwibitai/nanoclaw/pull/248) | Duplicate task prevention guidance | Bug fix | Open |
 
-### Our PRs (submitted 2026-02-15)
+### Merged PRs
 
-| PR | Title | Type | Files | Status |
-|----|-------|------|-------|--------|
-| [#245](https://github.com/qwibitai/nanoclaw/pull/245) | `>=` timestamp fix + dedup guard | Fix | `src/db.ts`, `src/index.ts` | Open |
-| [#246](https://github.com/qwibitai/nanoclaw/pull/246) | Exclude test files from agent-runner build | Simplification | `container/agent-runner/tsconfig.json` | Open |
-| [#247](https://github.com/qwibitai/nanoclaw/pull/247) | Consecutive error tracking | Fix | `src/index.ts` | Open |
-| [#248](https://github.com/qwibitai/nanoclaw/pull/248) | Duplicate task prevention guidance | Fix | `container/agent-runner/src/ipc-mcp-stdio.ts` | Open |
+| PR | Title | Merged |
+|----|-------|--------|
+| [#235](https://github.com/qwibitai/nanoclaw/pull/235) | `is_bot_message` + dedicated phone numbers | 2026-02-15 |
 
-When these merge and we sync, the following divergences collapse:
+### When open PRs merge, these divergences collapse:
 
-| PR | Divergences Resolved |
-|----|---------------------|
-| #245 | `src/db.ts` `>=` fix (BUGFIX), `src/index.ts` message dedup (BUGFIX) |
-| #246 | `container/agent-runner/tsconfig.json` (OTHER) |
-| #247 | `src/index.ts` consecutive error tracking (BUGFIX) |
-| #248 | `container/agent-runner/src/ipc-mcp-stdio.ts` task warning (BUGFIX) |
+| PR | Resolved |
+|----|----------|
+| #234 | `src/container-runtime.ts` (new file), `src/container-runner.ts` runtime calls, `container/build.sh` runtime detection |
+| #245 | `src/db.ts` `>=` fix, `src/index.ts` message dedup |
+| #246 | `container/agent-runner/tsconfig.json` test exclusion |
+| #247 | `src/index.ts` consecutive error tracking |
+| #248 | `container/agent-runner/src/ipc-mcp-stdio.ts` task warning |
 
-### Upstream PR #235 — **merged and synced** (2026-02-15)
+### Candidates for new PRs (bug fixes per CONTRIBUTING.md)
 
-[qwibitai/nanoclaw#235](https://github.com/qwibitai/nanoclaw/pull/235) — `feat: add is_bot_message column and support dedicated phone numbers`
+| Fix | Files | Bug |
+|-----|-------|-----|
+| `claimTask()` race condition | `src/db.ts`, `src/task-scheduler.ts` | Scheduler re-enqueues tasks while container still running |
+| Error status before result check | `src/index.ts`, `src/task-scheduler.ts` | Error status ignored when result text exists |
+| SDK `is_error` flag detection | `container/agent-runner/src/index.ts` | Agent-runner treats SDK errors as successes |
+| `<internal>` tag stripping in tasks | `src/task-scheduler.ts` | Internal reasoning leaks to users in scheduled task output |
+| Hardcoded 'Andy' in transcript format | `container/agent-runner/src/index.ts` | Doesn't respect configurable name (PR #235 follow-up) |
+| Recursive skill directory copy | `src/container-runner.ts` | Flat copy breaks nested skill dirs (e.g. add-cal with src/) |
+| Timeout after successful response | `src/task-scheduler.ts` | Reports false failure when agent sent output but timed out closing |
+| `$ASSISTANT_NAME` in CLAUDE.md templates | `groups/global/CLAUDE.md`, `groups/main/CLAUDE.md` | PR #235 made name configurable but templates still say "Andy" |
+| Presence update ordering | `src/channels/whatsapp.ts` | Fires before LID mapping, errors silently swallowed |
 
-Collapsed divergences: `src/env.ts`, `src/db.ts` is_bot_message, `src/config.ts` ASSISTANT_HAS_OWN_NUMBER, `src/router.ts` prefix logic, `src/ipc.ts` prefix logic, `src/channels/whatsapp.ts` bot detection + prefix + queue flush, `src/types.ts` is_bot_message. The entire ASSISTANT_NAME category is now upstream.
+### Candidates for security PRs (accepted per CONTRIBUTING.md)
 
-### After all pending PRs merge
+| Fix | Files | Risk |
+|-----|-------|------|
+| Secret env scrubbing | `container/agent-runner/src/index.ts` | API keys readable via `process.env` inside agent |
+| `/proc/*/environ` read blocking | `container/agent-runner/src/security-hooks.ts` | Agent can read all env vars via proc filesystem |
+| `/tmp/input.json` read blocking | `container/agent-runner/src/security-hooks.ts` | Agent can read its own input containing secrets |
+| Anti-prompt-injection rules | `groups/main/CLAUDE.md` | External data (emails, webhooks, RSS) could hijack agent |
+| Env file shell injection quoting | `src/container-runner.ts` | `#` truncates, `$()` executes in env values |
 
-**What remains ours:** PLUGIN, DOCKER, MEDIA, TASK (model selection, error notifications), SECURITY (hooks), and fork-only BUGFIX items (env file quoting — only exists in our env mount code).
+### Not PR-able (features per CONTRIBUTING.md)
 
-### Assessed but not PR-able
-
-| Divergence | Why Not |
-|------------|---------|
-| Plugin system | Feature — upstream uses skills-only architecture |
-| Docker runtime abstraction | Compatibility — `convert-to-docker` skill exists upstream |
+| Divergence | Reason |
+|------------|--------|
+| Plugin system (loader, types, hooks, MCP merge) | Feature — upstream uses skills-only architecture |
 | Media download pipeline | Capability — could become a skill |
-| Task model selection | Enhancement |
-| Task error notifications | Enhancement |
+| Per-task model selection | Enhancement |
+| Per-group custom triggers | Enhancement |
 | Heartbeat typing indicator | Enhancement |
 | Read receipts | Enhancement |
-| Security hooks (`security-hooks.ts`) | New capability (complementary to upstream's trust model) |
-| Env file quoting | Only applies to our fork's env mount mechanism |
+| Shorter scheduled task idle timeout | Enhancement |
+| 16 new skills | Skills are welcome as PRs but these are personal/niche |
