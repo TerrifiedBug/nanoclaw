@@ -143,7 +143,7 @@ fi
 
 The auth script supports two methods: QR code scanning and pairing code (phone number). Ask the user which they prefer.
 
-The auth script writes status to `store/auth-status.txt`:
+The auth script writes status to `data/channels/whatsapp/auth-status.txt`:
 - `already_authenticated` — credentials already exist
 - `pairing_code:<CODE>` — pairing code generated, waiting for user to enter it
 - `authenticated` — successfully authenticated
@@ -171,14 +171,14 @@ Clean any stale auth state and start auth in background:
 
 **Headless (server/VPS)** — use `--serve` to start an HTTP server:
 ```bash
-rm -rf store/auth store/qr-data.txt store/auth-status.txt
-npx tsx src/whatsapp-auth.ts --serve
+rm -rf data/channels/whatsapp/auth data/channels/whatsapp/qr-data.txt data/channels/whatsapp/auth-status.txt
+node plugins/channels/whatsapp/auth.js --serve
 ```
 
 **macOS/desktop** — use the file-based approach:
 ```bash
-rm -rf store/auth store/qr-data.txt store/auth-status.txt
-npm run auth
+rm -rf data/channels/whatsapp/auth data/channels/whatsapp/qr-data.txt data/channels/whatsapp/auth-status.txt
+node plugins/channels/whatsapp/auth.js
 ```
 
 Run this with `run_in_background: true`.
@@ -186,7 +186,7 @@ Run this with `run_in_background: true`.
 Poll for QR data (up to 15 seconds):
 
 ```bash
-for i in $(seq 1 15); do if [ -f store/qr-data.txt ]; then echo "qr_ready"; exit 0; fi; STATUS=$(cat store/auth-status.txt 2>/dev/null || echo "waiting"); if [ "$STATUS" = "already_authenticated" ]; then echo "$STATUS"; exit 0; fi; sleep 1; done; echo "timeout"
+for i in $(seq 1 15); do if [ -f data/channels/whatsapp/qr-data.txt ]; then echo "qr_ready"; exit 0; fi; STATUS=$(cat data/channels/whatsapp/auth-status.txt 2>/dev/null || echo "waiting"); if [ "$STATUS" = "already_authenticated" ]; then echo "$STATUS"; exit 0; fi; sleep 1; done; echo "timeout"
 ```
 
 If `already_authenticated`, skip to the next step.
@@ -199,15 +199,15 @@ If `already_authenticated`, skip to the next step.
 node -e "
 const QR = require('qrcode');
 const fs = require('fs');
-const qrData = fs.readFileSync('store/qr-data.txt', 'utf8');
+const qrData = fs.readFileSync('data/channels/whatsapp/qr-data.txt', 'utf8');
 QR.toString(qrData, { type: 'svg' }, (err, svg) => {
   if (err) process.exit(1);
   const template = fs.readFileSync('.claude/skills/setup/qr-auth.html', 'utf8');
-  fs.writeFileSync('store/qr-auth.html', template.replace('{{QR_SVG}}', svg));
+  fs.writeFileSync('data/channels/whatsapp/qr-auth.html', template.replace('{{QR_SVG}}', svg));
   console.log('done');
 });
 "
-open store/qr-auth.html
+open data/channels/whatsapp/qr-auth.html
 ```
 
 Tell the user:
@@ -218,12 +218,12 @@ Tell the user:
 Then poll for completion (up to 120 seconds):
 
 ```bash
-for i in $(seq 1 60); do STATUS=$(cat store/auth-status.txt 2>/dev/null || echo "waiting"); if [ "$STATUS" = "authenticated" ] || [ "$STATUS" = "already_authenticated" ]; then echo "$STATUS"; exit 0; elif echo "$STATUS" | grep -q "^failed:"; then echo "$STATUS"; exit 0; fi; sleep 2; done; echo "timeout"
+for i in $(seq 1 60); do STATUS=$(cat data/channels/whatsapp/auth-status.txt 2>/dev/null || echo "waiting"); if [ "$STATUS" = "authenticated" ] || [ "$STATUS" = "already_authenticated" ]; then echo "$STATUS"; exit 0; elif echo "$STATUS" | grep -q "^failed:"; then echo "$STATUS"; exit 0; fi; sleep 2; done; echo "timeout"
 ```
 
-- If `authenticated`, success — clean up with `rm -f store/qr-auth.html` and continue.
+- If `authenticated`, success — clean up with `rm -f data/channels/whatsapp/qr-auth.html` and continue.
 - If `failed:qr_timeout`, offer to retry (re-run the auth and regenerate the HTML page).
-- If `failed:logged_out`, delete `store/auth/` and retry.
+- If `failed:logged_out`, delete `data/channels/whatsapp/auth/` and retry.
 
 ### Option B: Pairing Code
 
@@ -232,8 +232,8 @@ Ask the user for their phone number (with country code, no + or spaces, e.g. `14
 Clean any stale auth state and start:
 
 ```bash
-rm -rf store/auth store/qr-data.txt store/auth-status.txt
-npx tsx src/whatsapp-auth.ts --pairing-code --phone PHONE_NUMBER
+rm -rf data/channels/whatsapp/auth data/channels/whatsapp/qr-data.txt data/channels/whatsapp/auth-status.txt
+node plugins/channels/whatsapp/auth.js --pairing-code --phone PHONE_NUMBER
 ```
 
 Run this with `run_in_background: true`.
@@ -241,7 +241,7 @@ Run this with `run_in_background: true`.
 Poll for the pairing code (up to 15 seconds):
 
 ```bash
-for i in $(seq 1 15); do STATUS=$(cat store/auth-status.txt 2>/dev/null || echo "waiting"); if echo "$STATUS" | grep -q "^pairing_code:"; then echo "$STATUS"; exit 0; elif [ "$STATUS" = "authenticated" ] || [ "$STATUS" = "already_authenticated" ]; then echo "$STATUS"; exit 0; elif echo "$STATUS" | grep -q "^failed:"; then echo "$STATUS"; exit 0; fi; sleep 1; done; echo "timeout"
+for i in $(seq 1 15); do STATUS=$(cat data/channels/whatsapp/auth-status.txt 2>/dev/null || echo "waiting"); if echo "$STATUS" | grep -q "^pairing_code:"; then echo "$STATUS"; exit 0; elif [ "$STATUS" = "authenticated" ] || [ "$STATUS" = "already_authenticated" ]; then echo "$STATUS"; exit 0; elif echo "$STATUS" | grep -q "^failed:"; then echo "$STATUS"; exit 0; fi; sleep 1; done; echo "timeout"
 ```
 
 Extract the code from the status (e.g. `pairing_code:ABC12DEF` → `ABC12DEF`) and tell the user:
@@ -256,11 +256,11 @@ Extract the code from the status (e.g. `pairing_code:ABC12DEF` → `ABC12DEF`) a
 Then poll for completion (up to 120 seconds):
 
 ```bash
-for i in $(seq 1 60); do STATUS=$(cat store/auth-status.txt 2>/dev/null || echo "waiting"); if [ "$STATUS" = "authenticated" ] || [ "$STATUS" = "already_authenticated" ]; then echo "$STATUS"; exit 0; elif echo "$STATUS" | grep -q "^failed:"; then echo "$STATUS"; exit 0; fi; sleep 2; done; echo "timeout"
+for i in $(seq 1 60); do STATUS=$(cat data/channels/whatsapp/auth-status.txt 2>/dev/null || echo "waiting"); if [ "$STATUS" = "authenticated" ] || [ "$STATUS" = "already_authenticated" ]; then echo "$STATUS"; exit 0; elif echo "$STATUS" | grep -q "^failed:"; then echo "$STATUS"; exit 0; fi; sleep 2; done; echo "timeout"
 ```
 
 - If `authenticated` or `already_authenticated`, success — continue to next step.
-- If `failed:logged_out`, delete `store/auth/` and retry.
+- If `failed:logged_out`, delete `data/channels/whatsapp/auth/` and retry.
 - If `failed:515` or timeout, the 515 reconnect should handle this automatically. If it persists, the user may need to temporarily stop other WhatsApp-connected apps on the same device.
 
 ### Option C: QR Code in Terminal
@@ -269,7 +269,7 @@ Tell the user to run the auth command in another terminal window:
 
 > Open another terminal and run:
 > ```
-> cd PROJECT_PATH && npm run auth
+> cd PROJECT_PATH && node plugins/channels/whatsapp/auth.js
 > ```
 > Scan the QR code that appears, then let me know when it says "Successfully authenticated".
 
@@ -626,12 +626,12 @@ The user should receive a response in WhatsApp.
 **Messages sent but not received by NanoClaw (DMs)**:
 - WhatsApp may use LID (Linked Identity) JIDs for DMs instead of phone numbers
 - Check logs for `Translated LID to phone JID` — if missing, the LID isn't being resolved
-- The `translateJid` method in `src/channels/whatsapp.ts` uses `sock.signalRepository.lidMapping.getPNForLID()` to resolve LIDs
+- The `translateJid` method in `plugins/channels/whatsapp/index.js` uses `sock.signalRepository.lidMapping.getPNForLID()` to resolve LIDs
 - Verify the registered JID doesn't have a device suffix (should be `number@s.whatsapp.net`, not `number:0@s.whatsapp.net`)
 
 **WhatsApp disconnected**:
 - The service will show a macOS notification
-- Run `npm run auth` to re-authenticate
+- Run `node plugins/channels/whatsapp/auth.js` to re-authenticate
 - Restart the service: `launchctl kickstart -k gui/$(id -u)/com.nanoclaw`
 
 **Unload service**:

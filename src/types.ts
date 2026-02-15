@@ -37,6 +37,7 @@ export interface RegisteredGroup {
   folder: string;
   trigger: string;
   added_at: string;
+  channel?: string; // Which channel plugin registered this group (e.g. 'whatsapp')
   containerConfig?: ContainerConfig;
   requiresTrigger?: boolean; // Default: true for groups, false for solo chats
 }
@@ -92,8 +93,8 @@ export interface Channel {
   isConnected(): boolean;
   ownsJid(jid: string): boolean;
   disconnect(): Promise<void>;
-  // Optional: typing indicator. Channels that support it implement it.
-  setTyping?(jid: string, isTyping: boolean): Promise<void>;
+  refreshMetadata?(): Promise<void>;
+  listAvailableGroups?(): Promise<Array<{ jid: string; name: string }>>;
 }
 
 // Callback type that channels use to deliver inbound messages

@@ -35,8 +35,11 @@ agents-sdk-docs
 # Plugins (personal config, created by skills)
 plugins/*
 !plugins/.gitkeep
-# Core plugin — ships with repo (browser automation for all agents)
+# Core plugins — ship with repo
 !plugins/agent-browser/
+!plugins/channels/
+plugins/channels/*
+!plugins/channels/whatsapp/
 
 # Skill-created artifacts (added by plugin setup, not base config)
 .transcription.config.json

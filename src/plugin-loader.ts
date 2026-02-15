@@ -3,6 +3,7 @@ import path from 'path';
 
 import { logger } from './logger.js';
 import type {
+  ChannelPluginConfig,
   InboundMessage,
   LoadedPlugin,
   PluginContext,
@@ -43,6 +44,14 @@ export function parseManifest(raw: Record<string, unknown>): PluginManifest {
         )
       : [],
     dependencies: raw.dependencies === true,
+    channelPlugin: raw.channelPlugin === true,
+    authSkill: typeof raw.authSkill === 'string' ? raw.authSkill : undefined,
+    channels: Array.isArray(raw.channels)
+      ? raw.channels.filter((v): v is string => typeof v === 'string')
+      : undefined,
+    groups: Array.isArray(raw.groups)
+      ? raw.groups.filter((v): v is string => typeof v === 'string')
+      : undefined,
   };
 }
 
@@ -156,14 +165,25 @@ export class PluginRegistry {
     return current;
   }
 
-  /** Call onStartup on all plugins, collect channels from onChannel hooks */
+  /** Get plugins that declare channelPlugin: true */
+  getChannelPlugins(): LoadedPlugin[] {
+    return this.plugins.filter(p => p.manifest.channelPlugin);
+  }
+
+  /** Initialize a single channel plugin — call before startup() */
+  async initChannel(plugin: LoadedPlugin, ctx: PluginContext, config: ChannelPluginConfig): Promise<Channel> {
+    if (!plugin.hooks.onChannel) {
+      throw new Error(`Plugin ${plugin.manifest.name} does not export onChannel`);
+    }
+    const channel = await plugin.hooks.onChannel(ctx, config);
+    this._channels.push(channel);
+    logger.info({ plugin: plugin.manifest.name, channel: channel.name }, 'Plugin channel registered');
+    return channel;
+  }
+
+  /** Call onStartup on all non-channel plugins */
   async startup(ctx: PluginContext): Promise<void> {
     for (const plugin of this.plugins) {
-      if (plugin.hooks.onChannel) {
-        const channel = await plugin.hooks.onChannel(ctx);
-        this._channels.push(channel);
-        logger.info({ plugin: plugin.manifest.name, channel: channel.name }, 'Plugin channel registered');
-      }
       if (plugin.hooks.onStartup) {
         await plugin.hooks.onStartup(ctx);
         logger.info({ plugin: plugin.manifest.name }, 'Plugin started');
@@ -184,23 +204,36 @@ export class PluginRegistry {
     }
   }
 
-  getContainerEnvVars(): string[] {
-    return collectContainerEnvVars(this.plugins);
+  /** Filter plugins by channel and group scope */
+  getPluginsForGroup(channel?: string, groupFolder?: string): LoadedPlugin[] {
+    return this.plugins.filter(p => {
+      // Channel filter: undefined or ["*"] means all channels
+      const ch = p.manifest.channels;
+      if (ch && !ch.includes('*') && channel && !ch.includes(channel)) return false;
+      // Group filter: undefined or ["*"] means all groups
+      const gr = p.manifest.groups;
+      if (gr && !gr.includes('*') && groupFolder && !gr.includes(groupFolder)) return false;
+      return true;
+    });
   }
 
-  getSkillPaths(): Array<{ hostPath: string; name: string }> {
-    return collectSkillPaths(this.plugins);
+  getContainerEnvVars(channel?: string, groupFolder?: string): string[] {
+    return collectContainerEnvVars(this.getPluginsForGroup(channel, groupFolder));
   }
 
-  getContainerHookPaths(): Array<{ hostPath: string; name: string }> {
-    return collectContainerHookPaths(this.plugins);
+  getSkillPaths(channel?: string, groupFolder?: string): Array<{ hostPath: string; name: string }> {
+    return collectSkillPaths(this.getPluginsForGroup(channel, groupFolder));
   }
 
-  getContainerMounts(): Array<{ hostPath: string; containerPath: string }> {
-    return collectContainerMounts(this.plugins);
+  getContainerHookPaths(channel?: string, groupFolder?: string): Array<{ hostPath: string; name: string }> {
+    return collectContainerHookPaths(this.getPluginsForGroup(channel, groupFolder));
   }
 
-  getMergedMcpConfig(rootMcpPath?: string): { mcpServers: Record<string, any> } {
+  getContainerMounts(channel?: string, groupFolder?: string): Array<{ hostPath: string; containerPath: string }> {
+    return collectContainerMounts(this.getPluginsForGroup(channel, groupFolder));
+  }
+
+  getMergedMcpConfig(rootMcpPath?: string, channel?: string, groupFolder?: string): { mcpServers: Record<string, any> } {
     const fragments: Array<Record<string, any>> = [];
 
     // Include root .mcp.json if it exists
@@ -212,8 +245,8 @@ export class PluginRegistry {
       }
     }
 
-    // Include each plugin's mcp.json
-    for (const plugin of this.plugins) {
+    // Include each scoped plugin's mcp.json
+    for (const plugin of this.getPluginsForGroup(channel, groupFolder)) {
       const mcpFile = path.join(plugin.dir, 'mcp.json');
       if (fs.existsSync(mcpFile)) {
         try {
@@ -228,22 +261,39 @@ export class PluginRegistry {
   }
 }
 
+/** Collect plugin directories: scans plugins/ and one level of subdirectories (e.g. plugins/channels/) */
+function discoverPluginDirs(rootDir: string): string[] {
+  const dirs: string[] = [];
+  if (!fs.existsSync(rootDir)) return dirs;
+
+  for (const entry of fs.readdirSync(rootDir)) {
+    const entryPath = path.join(rootDir, entry);
+    if (!fs.statSync(entryPath).isDirectory()) continue;
+
+    if (fs.existsSync(path.join(entryPath, 'plugin.json'))) {
+      // Direct plugin: plugins/{name}/plugin.json
+      dirs.push(entryPath);
+    } else {
+      // Category folder: plugins/{category}/{name}/plugin.json
+      for (const sub of fs.readdirSync(entryPath)) {
+        const subPath = path.join(entryPath, sub);
+        if (fs.statSync(subPath).isDirectory() && fs.existsSync(path.join(subPath, 'plugin.json'))) {
+          dirs.push(subPath);
+        }
+      }
+    }
+  }
+  return dirs;
+}
+
 /** Discover and load all plugins from the plugins/ directory */
 export async function loadPlugins(pluginsDir?: string): Promise<PluginRegistry> {
   const registry = new PluginRegistry();
   const dir = pluginsDir || path.join(process.cwd(), 'plugins');
 
-  if (!fs.existsSync(dir)) {
-    logger.debug({ dir }, 'No plugins directory found');
-    return registry;
-  }
-
-  const entries = fs.readdirSync(dir);
-  for (const entry of entries) {
-    const pluginDir = path.join(dir, entry);
+  const pluginDirs = discoverPluginDirs(dir);
+  for (const pluginDir of pluginDirs) {
     const manifestPath = path.join(pluginDir, 'plugin.json');
-
-    if (!fs.existsSync(manifestPath)) continue;
 
     try {
       const raw = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
@@ -277,7 +327,7 @@ export async function loadPlugins(pluginsDir?: string): Promise<PluginRegistry> 
 
       registry.add({ manifest, dir: pluginDir, hooks });
     } catch (err) {
-      logger.error({ plugin: entry, err }, 'Failed to load plugin');
+      logger.error({ plugin: path.basename(pluginDir), err }, 'Failed to load plugin');
     }
   }
 
