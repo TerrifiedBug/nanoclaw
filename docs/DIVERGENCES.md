@@ -6,7 +6,7 @@ This document tracks all legitimate divergences between our fork's `main` branch
 - `main` = clean NanoClaw as if fresh install (divergence analysis compares this vs upstream)
 - Personal deployments may have installed plugins that modify source (Dockerfile, gitignore, etc.)
 
-**Last full audit:** 2026-02-15 (updated after mediaHostPath addition for voice transcription plugin support)
+**Last full audit:** 2026-02-15 (updated after decoupling cleanup — per-plugin deps, channel-agnostic comments/tools)
 
 ## Divergence Categories
 
@@ -29,10 +29,10 @@ This document tracks all legitimate divergences between our fork's `main` branch
 | `src/config.ts` | Modified | TASK, PLUGIN | `SCHEDULED_TASK_IDLE_TIMEOUT`, `createTriggerPattern()` |
 | `src/container-runner.ts` | Modified | PLUGIN, DOCKER, SECURITY, TASK, BUGFIX | Plugin mounts/hooks/MCP merge, runtime abstraction, env file quoting, OAuth sync |
 | `src/container-runtime.ts` | **New** | DOCKER | Runtime abstraction (Docker vs Apple Container), orphan cleanup, mount permissions |
-| `src/db.ts` | Modified | BUGFIX, TASK, PLUGIN | `>=` timestamp fix, `insertExternalMessage()`, `claimTask()`, model column |
+| `src/db.ts` | Modified | BUGFIX, TASK, PLUGIN | `>=` timestamp fix, `insertExternalMessage()`, `claimTask()`, model column, channel column (no backfill) |
 | `src/ipc.ts` | Modified | TASK | Model field |
 | `src/plugin-loader.ts` | **New** | PLUGIN | Plugin discovery, manifest parsing, env var collection, MCP merging, hook lifecycle |
-| `src/plugin-types.ts` | **New** | PLUGIN | TypeScript interfaces for plugin system |
+| `src/plugin-types.ts` | **New** | PLUGIN | TypeScript interfaces for plugin system (includes version fields) |
 | `src/task-scheduler.ts` | Modified | TASK, BUGFIX | `claimTask()`, shorter idle timeout, model selection, error notifications |
 | `src/types.ts` | Modified | MEDIA, TASK, PLUGIN | Media fields (`mediaType`, `mediaPath`, `mediaHostPath`), model, async `OnInboundMessage` |
 | `src/channels/whatsapp.ts` | Modified | MEDIA, OTHER | Media download (returns `hostPath` for host-side plugin hooks), read receipts |
@@ -53,7 +53,7 @@ This document tracks all legitimate divergences between our fork's `main` branch
 | `container/Dockerfile` | Modified | PLUGIN | Added `jq`, skills directory, env-dir sourcing in entrypoint |
 | `container/build.sh` | Modified | DOCKER | Auto-detects Docker vs Apple Container runtime |
 | `container/agent-runner/src/index.ts` | Modified | PLUGIN, SECURITY, TASK | Plugin hook loading, secret scrubbing, model selection, error detection |
-| `container/agent-runner/src/ipc-mcp-stdio.ts` | Modified | BUGFIX | Duplicate task creation warning |
+| `container/agent-runner/src/ipc-mcp-stdio.ts` | Modified | BUGFIX, PLUGIN | Duplicate task creation warning, channel-agnostic tool descriptions |
 | `container/agent-runner/src/security-hooks.ts` | **New** | SECURITY | Bash sanitization, `/proc/*/environ` blocking, `/tmp/input.json` blocking |
 | `container/agent-runner/src/security-hooks.test.ts` | **New** | SECURITY | Tests for security hooks |
 | `container/agent-runner/tsconfig.json` | Modified | OTHER | Exclude test files from production build |
@@ -70,6 +70,7 @@ This document tracks all legitimate divergences between our fork's `main` branch
 | `groups/global/CLAUDE.md` | Modified | OTHER | References `$ASSISTANT_NAME` env var (upstream still hardcodes "Andy") |
 | `groups/main/CLAUDE.md` | Modified | SECURITY, OTHER | Anti-prompt-injection rules, `$ASSISTANT_NAME` env var, generic example triggers |
 | `docs/DIVERGENCES.md` | **New** | OTHER | This file — fork divergence tracking |
+| `package.json` | Modified | PLUGIN | Channel SDK deps removed (moved to per-plugin packages) |
 | `package-lock.json` | Modified | OTHER | Platform-specific (Linux vs macOS optional deps) |
 
 ## Skills (`.claude/skills/`)
