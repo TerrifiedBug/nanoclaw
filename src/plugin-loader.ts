@@ -112,11 +112,14 @@ export function collectContainerMounts(
   const mounts: Array<{ hostPath: string; containerPath: string }> = [];
   for (const plugin of plugins) {
     for (const mount of plugin.manifest.containerMounts || []) {
-      if (fs.existsSync(mount.hostPath)) {
-        mounts.push(mount);
+      const resolvedPath = path.isAbsolute(mount.hostPath)
+        ? mount.hostPath
+        : path.resolve(mount.hostPath);
+      if (fs.existsSync(resolvedPath)) {
+        mounts.push({ hostPath: resolvedPath, containerPath: mount.containerPath });
       } else {
         logger.warn(
-          { plugin: plugin.manifest.name, hostPath: mount.hostPath },
+          { plugin: plugin.manifest.name, hostPath: resolvedPath },
           'Declared container mount path does not exist',
         );
       }
