@@ -5,9 +5,13 @@
  * and provides a unified API for container operations.
  */
 import { ChildProcessByStdio, exec, execSync, spawn } from 'child_process';
+import path from 'path';
 import { Readable } from 'stream';
+import { fileURLToPath } from 'url';
 import { Writable } from 'stream';
 import { logger } from './logger.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export type Runtime = 'docker' | 'apple-container';
 
@@ -151,8 +155,17 @@ export function run(args: string[]): ChildProcessByStdio<Writable, Readable, Rea
 /** Build extra run args needed for the detected runtime */
 export function extraRunArgs(): string[] {
   if (detectRuntime() === 'docker') {
-    // Chromium's crashpad handler needs ptrace
-    return ['--cap-add=SYS_PTRACE'];
+    // Chromium needs: ptrace (crashpad), relaxed seccomp (user namespaces
+    // for sandbox), --ipc=host (avoids OOM from small /dev/shm), and --init
+    // (reaps zombie processes). The seccomp profile is Playwright's official
+    // one — Docker's default blocks clone/unshare/ptrace that Chromium needs.
+    const seccomp = path.join(__dirname, '..', 'container', 'chromium-seccomp.json');
+    return [
+      '--cap-add=SYS_PTRACE',
+      '--security-opt', `seccomp=${seccomp}`,
+      '--ipc=host',
+      '--init',
+    ];
   }
   return [];
 }

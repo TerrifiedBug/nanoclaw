@@ -33,6 +33,8 @@ Only `plugin.json` is required. Everything else is optional depending on what th
 | `containerHooks` | `string[]` | No | JS files (relative paths) loaded as SDK hooks inside containers |
 | `containerMounts` | `Array<{hostPath, containerPath}>` | No | Additional read-only mounts for containers |
 | `dependencies` | `boolean` | No | Whether the plugin has its own `package.json`/`node_modules` |
+| `channels` | `string[]` | No | Only inject into containers for these channels (default: `["*"]` = all). See [Plugin Scoping](CHANNEL_PLUGINS.md#plugin-scoping). |
+| `groups` | `string[]` | No | Only inject into containers for these group folders (default: `["*"]` = all). See [Plugin Scoping](CHANNEL_PLUGINS.md#plugin-scoping). |
 
 ### Examples
 
