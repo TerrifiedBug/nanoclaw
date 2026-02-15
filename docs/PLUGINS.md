@@ -246,7 +246,42 @@ To fully uninstall a plugin:
    # Then restart the service
    ```
 
-## Example: Complete Minimal Plugin
+## Why Plugins
+
+NanoClaw upstream uses a single-process architecture where new capabilities require modifying core source files (`src/index.ts`, `src/container-runner.ts`, etc.). This works well for a single maintainer but creates friction when multiple people want different integrations:
+
+- **Merge conflicts**: Every integration touches the same hot files. Rebasing against upstream means resolving conflicts in `index.ts` every time.
+- **Growing complexity**: Each integration adds conditionals to the startup path, shutdown path, and message loop. The core files grow unbounded.
+- **All-or-nothing**: You can't install one integration without carrying the code for all of them.
+
+The plugin system solves this by moving integrations out of core source entirely:
+
+| Aspect | Without plugins (upstream) | With plugins |
+|--------|--------------------------|--------------|
+| Adding a capability | Modify `src/index.ts`, `container-runner.ts`, etc. | Drop a directory in `plugins/` |
+| Upstream sync | Resolve merge conflicts in modified files | `git pull` — no conflicts (plugins aren't in core) |
+| Removing a capability | Revert scattered changes across files | `rm -rf plugins/{name}/` |
+| Container env vars | Hardcode in `container-runner.ts` | Declare in `plugin.json` → auto-injected |
+| MCP servers | Edit container's `.mcp.json` directly | Drop `mcp.json` in plugin dir → auto-merged |
+| Agent skills | Modify container build or mount scripts | Put in `container-skills/` → auto-mounted |
+| Testing in isolation | Difficult — changes are interleaved | Each plugin is self-contained |
+
+The tradeoff is a small abstraction layer (`plugin-loader.ts`, `plugin-types.ts`, ~280 lines total). The runtime cost is negligible — plugins are loaded once at startup.
+
+### Security Model
+
+Plugins run with the same trust level as core code — they execute in the host Node.js process and have full access to `PluginContext`. This is intentional: plugins are installed by the operator, not by end users or agents.
+
+Container-side components (skills, hooks, MCP configs) are mounted read-only and run inside the sandboxed agent container. An agent cannot install, modify, or remove plugins — it can only use what's mounted into its container.
+
+| Component | Runs where | Trust level |
+|-----------|-----------|-------------|
+| `index.js` hooks | Host process | Full (operator-installed) |
+| `container-skills/` | Agent container (read-only mount) | Sandboxed |
+| `containerHooks` | Agent container (read-only mount) | Sandboxed |
+| `mcp.json` | Merged config mounted into container | Sandboxed |
+
+## Example: Minimal Plugin (Weather)
 
 A weather plugin that gives agents access to weather data via a container skill, using free public APIs (no API key required).
 
@@ -286,3 +321,116 @@ Tips:
 ```
 
 That is the entire plugin. On startup, NanoClaw discovers `plugins/weather/plugin.json`, sees the `container-skills/` directory, and mounts it into every agent container at `/workspace/.claude/skills/weather/`. Agents can then answer weather questions using the skill instructions.
+
+## Example: Host-Side Hooks (Webhook)
+
+The webhook plugin demonstrates `onStartup`/`onShutdown` hooks — it runs an HTTP server alongside WhatsApp so external services can push events into the message pipeline.
+
+### `plugins/webhook/plugin.json`
+
+```json
+{
+  "name": "webhook",
+  "description": "HTTP webhook endpoint for external event ingestion",
+  "containerEnvVars": ["NANOCLAW_WEBHOOK_URL", "NANOCLAW_WEBHOOK_SECRET"],
+  "hooks": ["onStartup", "onShutdown"]
+}
+```
+
+### `plugins/webhook/index.js`
+
+The hook implementations are plain ESM functions matching the names in the `hooks` array:
+
+```javascript
+import crypto from 'crypto';
+import http from 'http';
+
+let server;
+
+export async function onStartup(ctx) {
+  const secret = process.env.NANOCLAW_WEBHOOK_SECRET;
+  if (!secret) return;
+
+  const port = parseInt(process.env.WEBHOOK_PORT || '3457', 10);
+
+  server = http.createServer((req, res) => {
+    // Validate Bearer token, parse JSON body { source, text }
+    // ...
+    const mainJid = ctx.getMainChannelJid();
+    const messageId = `wh-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+    ctx.insertMessage(mainJid, messageId, `webhook:${source}`, source, text);
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, messageId }));
+  });
+
+  server.listen(port, () => ctx.logger.info({ port }, 'Webhook server listening'));
+}
+
+export async function onShutdown() {
+  if (server) { server.close(); server = null; }
+}
+```
+
+Key patterns:
+- `ctx.insertMessage()` injects messages into the queue — the normal processing loop picks them up
+- `ctx.getMainChannelJid()` routes to the admin channel
+- `ctx.logger` provides structured logging
+- The server only starts if the env var is set (safe default = off)
+- No npm dependencies — uses Node.js built-in `http` and `crypto`
+
+## Example: Container Hooks (Claude-Mem)
+
+The claude-mem plugin demonstrates `containerHooks` — JS files that run inside the agent container as SDK hooks, separate from the host-side `index.js` hooks.
+
+### `plugins/claude-mem/plugin.json`
+
+```json
+{
+  "name": "claude-mem",
+  "description": "Persistent cross-session memory",
+  "containerEnvVars": ["CLAUDE_MEM_URL"],
+  "containerHooks": ["hooks/post-tool-use.js"],
+  "hooks": []
+}
+```
+
+Note: `hooks` is empty (no host-side hooks), but `containerHooks` declares a JS file that runs inside every agent container.
+
+### `plugins/claude-mem/hooks/post-tool-use.js`
+
+```javascript
+export function register(ctx) {
+  const url = ctx.env.CLAUDE_MEM_URL;
+  if (!url) return {};
+
+  return {
+    PostToolUse: [{
+      hooks: [async (input) => {
+        const text = `[${ctx.groupFolder}] Tool: ${input.tool_name}\n` +
+          `Input: ${JSON.stringify(input.tool_input).slice(0, 500)}\n` +
+          `Output: ${JSON.stringify(input.tool_response).slice(0, 2000)}`;
+
+        fetch(`${url}/api/memory/save`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, project: 'nanoclaw-mem' }),
+        }).catch(() => {});
+
+        return {};
+      }],
+    }],
+  };
+}
+```
+
+This hook auto-captures every tool use (Bash, Read, MCP calls) to a persistent vector database. The `register()` function receives a context object with `env` and `groupFolder`, and returns SDK hook registrations.
+
+### How container hooks differ from host hooks
+
+| | Host hooks (`hooks`) | Container hooks (`containerHooks`) |
+|--|---------------------|-----------------------------------|
+| Runs in | Host Node.js process | Agent container |
+| Has access to | `PluginContext` (messages, channels) | SDK hook API (tool inputs/outputs) |
+| Lifecycle | `onStartup`/`onShutdown` per-process | Per-container invocation |
+| Use case | Servers, message transformation, channels | Observability, guardrails, tool augmentation |
