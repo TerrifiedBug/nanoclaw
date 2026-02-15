@@ -32,6 +32,22 @@ HTTP webhook endpoint for NanoClaw. External services POST events to it, which g
    echo "WEBHOOK_PORT=3457" >> .env
    ```
 
+3. Ask the user which network interface to bind on:
+
+   - **Localhost only (recommended)** — `WEBHOOK_HOST=127.0.0.1`. Only services on this machine can reach the webhook. Use this if external services connect via a VPN/tunnel (WireGuard, Tailscale) that terminates locally, or if you use a reverse proxy (nginx, Caddy).
+   - **All interfaces** — `WEBHOOK_HOST=0.0.0.0`. Services on the LAN can reach the webhook directly. Convenient for Home Assistant, n8n, etc. on the same network.
+
+   If the user chooses **all interfaces**, warn them:
+   > **Security note:** Binding to all interfaces exposes the webhook to your entire network. The endpoint is protected by Bearer token auth, but the token is sent in cleartext over HTTP. Recommendations:
+   > - **Do not expose port 3457 to the internet** — use a firewall rule to restrict access to your LAN/VPN only
+   > - For remote access, use a VPN (WireGuard, Tailscale, Pangolin) rather than port-forwarding
+   > - If you must expose it publicly, put it behind a reverse proxy with TLS (nginx, Caddy)
+
+   Save the choice:
+   ```bash
+   echo "WEBHOOK_HOST=127.0.0.1" >> .env   # or 0.0.0.0
+   ```
+
 3. Copy plugin files:
    ```bash
    cp -r .claude/skills/add-webhook/files/ plugins/webhook/
@@ -126,8 +142,9 @@ curl -X POST http://NANOCLAW_IP:3457/webhook \
 
 - **Auth:** Every request requires `Authorization: Bearer <NANOCLAW_WEBHOOK_SECRET>`
 - **Payload limit:** 64KB max body size prevents memory exhaustion
-- **Network:** Designed for VPN/mesh networks (Tailscale, Pangolin) -- not internet-facing
+- **Network:** Defaults to localhost only (`127.0.0.1`). Can be opened to LAN via `WEBHOOK_HOST=0.0.0.0`
 - **Default off:** Server doesn't start without `NANOCLAW_WEBHOOK_SECRET` configured
+- **Not internet-safe:** Token is sent in cleartext over HTTP. For remote access, use a VPN (WireGuard, Tailscale) or a reverse proxy with TLS
 
 ## Troubleshooting
 
@@ -153,5 +170,6 @@ sqlite3 store/messages.db "SELECT jid, folder FROM registered_groups WHERE folde
    ```bash
    sed -i '/^NANOCLAW_WEBHOOK_SECRET=/d' .env
    sed -i '/^WEBHOOK_PORT=/d' .env
+   sed -i '/^WEBHOOK_HOST=/d' .env
    ```
 3. Rebuild and restart.
