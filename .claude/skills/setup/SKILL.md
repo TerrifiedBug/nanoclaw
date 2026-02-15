@@ -612,7 +612,21 @@ Tell the user:
 > ```
 > The folder appears inside the container at `/workspace/extra/<folder-name>` (derived from the last segment of the path). Add `"readonly": false` for write access, or `"containerPath": "custom-name"` to override the default name.
 
-## 8. Configure launchd Service
+## 8. Configure Background Service
+
+Detect the platform to determine which service manager to use:
+
+```bash
+if [ "$(uname)" = "Darwin" ]; then
+  echo "SERVICE_TYPE: launchd"
+elif command -v systemctl >/dev/null 2>&1; then
+  echo "SERVICE_TYPE: systemd"
+else
+  echo "SERVICE_TYPE: unknown"
+fi
+```
+
+### 8a. macOS (launchd)
 
 Generate the plist file with correct paths automatically:
 
@@ -672,6 +686,57 @@ Verify it's running:
 launchctl list | grep nanoclaw
 ```
 
+### 8b. Linux (systemd)
+
+Generate the systemd unit file:
+
+```bash
+NODE_PATH=$(which node)
+PROJECT_PATH=$(pwd)
+
+sudo tee /etc/systemd/system/nanoclaw.service << EOF
+[Unit]
+Description=NanoClaw Agent
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+KillMode=process
+ExecStart=${NODE_PATH} ${PROJECT_PATH}/dist/index.js
+WorkingDirectory=${PROJECT_PATH}
+Restart=always
+RestartSec=10
+Environment=HOME=${HOME}
+Environment=PATH=/usr/local/bin:/usr/bin:/bin:${HOME}/.local/bin
+EnvironmentFile=${PROJECT_PATH}/.env
+StandardOutput=append:${PROJECT_PATH}/logs/nanoclaw.log
+StandardError=append:${PROJECT_PATH}/logs/nanoclaw.error.log
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+echo "Created systemd service with:"
+echo "  Node: ${NODE_PATH}"
+echo "  Project: ${PROJECT_PATH}"
+```
+
+Build and start the service:
+
+```bash
+npm run build
+mkdir -p logs
+sudo systemctl daemon-reload
+sudo systemctl enable nanoclaw
+sudo systemctl start nanoclaw
+```
+
+Verify it's running:
+```bash
+systemctl status nanoclaw
+```
+
 ## 9. Test
 
 Tell the user (using the assistant name they configured):
@@ -708,6 +773,21 @@ The user should receive a response in their registered channel.
 **Unload service**:
 ```bash
 launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist
+```
+
+**Restart service (systemd)**:
+```bash
+sudo systemctl restart nanoclaw
+```
+
+**Stop service (systemd)**:
+```bash
+sudo systemctl stop nanoclaw
+```
+
+**View logs (systemd)**:
+```bash
+journalctl -u nanoclaw -f
 ```
 
 ### WhatsApp-Specific
