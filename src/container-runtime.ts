@@ -4,7 +4,7 @@
  * Auto-detects whether Docker or Apple Container is available
  * and provides a unified API for container operations.
  */
-import { ChildProcessByStdio, exec, execSync, spawn } from 'child_process';
+import { ChildProcessByStdio, execFile, execFileSync, spawn } from 'child_process';
 import path from 'path';
 import { Readable } from 'stream';
 import { fileURLToPath } from 'url';
@@ -23,14 +23,14 @@ export function detectRuntime(): Runtime {
 
   // Prefer Docker if available (works on both Linux and macOS)
   try {
-    execSync('docker info', { stdio: 'pipe', timeout: 10000 });
+    execFileSync('docker', ['info'], { stdio: 'pipe', timeout: 10000 });
     detectedRuntime = 'docker';
     return detectedRuntime;
   } catch { /* Docker not available */ }
 
   // Fall back to Apple Container (macOS only)
   try {
-    execSync('container system status', { stdio: 'pipe', timeout: 10000 });
+    execFileSync('container', ['system', 'status'], { stdio: 'pipe', timeout: 10000 });
     detectedRuntime = 'apple-container';
     return detectedRuntime;
   } catch { /* Apple Container not available */ }
@@ -52,12 +52,12 @@ export function ensureRunning(): void {
 
   if (runtime === 'apple-container') {
     try {
-      execSync('container system status', { stdio: 'pipe' });
+      execFileSync('container', ['system', 'status'], { stdio: 'pipe' });
       logger.debug('Apple Container system already running');
     } catch {
       logger.info('Starting Apple Container system...');
       try {
-        execSync('container system start', { stdio: 'pipe', timeout: 30000 });
+        execFileSync('container', ['system', 'start'], { stdio: 'pipe', timeout: 30000 });
         logger.info('Apple Container system started');
       } catch (err) {
         logger.error({ err }, 'Failed to start Apple Container system');
@@ -67,7 +67,7 @@ export function ensureRunning(): void {
   } else {
     // Docker daemon is managed externally (systemd, Docker Desktop, etc.)
     try {
-      execSync('docker info', { stdio: 'pipe', timeout: 10000 });
+      execFileSync('docker', ['info'], { stdio: 'pipe', timeout: 10000 });
       logger.debug('Docker daemon running');
     } catch (err) {
       logger.error({ err }, 'Docker daemon not running');
@@ -87,7 +87,7 @@ function cleanupOrphanedContainers(): void {
 
   try {
     if (runtime === 'apple-container') {
-      const output = execSync('container ls --format json', {
+      const output = execFileSync('container', ['ls', '--format', 'json'], {
         stdio: ['pipe', 'pipe', 'pipe'],
         encoding: 'utf-8',
       });
@@ -102,7 +102,7 @@ function cleanupOrphanedContainers(): void {
         .map((c) => c.configuration.id);
       for (const name of orphans) {
         try {
-          execSync(`container stop ${name}`, { stdio: 'pipe' });
+          execFileSync('container', ['stop', name], { stdio: 'pipe' });
         } catch {
           /* already stopped */
         }
@@ -115,8 +115,8 @@ function cleanupOrphanedContainers(): void {
       }
     } else {
       // Docker: list by name filter, stop, then remove
-      const output = execSync(
-        'docker ps -a --format "{{.Names}}" --filter name=nanoclaw-',
+      const output = execFileSync(
+        'docker', ['ps', '-a', '--format', '{{.Names}}', '--filter', 'name=nanoclaw-'],
         { stdio: ['pipe', 'pipe', 'pipe'], encoding: 'utf-8' },
       );
       const names = output
@@ -126,13 +126,13 @@ function cleanupOrphanedContainers(): void {
       if (names.length > 0) {
         // Stop running ones
         try {
-          execSync(`docker stop ${names.join(' ')}`, { stdio: 'pipe', timeout: 15000 });
+          execFileSync('docker', ['stop', ...names], { stdio: 'pipe', timeout: 15000 });
         } catch {
           /* some may already be stopped */
         }
         // Remove all
         try {
-          execSync(`docker rm ${names.join(' ')}`, { stdio: 'pipe' });
+          execFileSync('docker', ['rm', ...names], { stdio: 'pipe' });
         } catch {
           /* some may already be removed */
         }
@@ -156,14 +156,14 @@ export function run(args: string[]): ChildProcessByStdio<Writable, Readable, Rea
 export function extraRunArgs(): string[] {
   if (detectRuntime() === 'docker') {
     // Chromium needs: ptrace (crashpad), relaxed seccomp (user namespaces
-    // for sandbox), --ipc=host (avoids OOM from small /dev/shm), and --init
+    // for sandbox), sufficient /dev/shm (default 64MB causes OOM), and --init
     // (reaps zombie processes). The seccomp profile is Playwright's official
     // one — Docker's default blocks clone/unshare/ptrace that Chromium needs.
     const seccomp = path.join(__dirname, '..', 'container', 'chromium-seccomp.json');
     return [
       '--cap-add=SYS_PTRACE',
       '--security-opt', `seccomp=${seccomp}`,
-      '--ipc=host',
+      '--shm-size=2g',
       '--init',
     ];
   }
@@ -175,7 +175,7 @@ export function stop(
   containerName: string,
   callback: (err: Error | null) => void,
 ): void {
-  exec(`${cli()} stop ${containerName}`, { timeout: 15000 }, callback);
+  execFile(cli(), ['stop', containerName], { timeout: 15000 }, callback);
 }
 
 /**
@@ -186,7 +186,7 @@ export function stop(
 export function fixMountPermissions(hostPath: string): void {
   if (detectRuntime() !== 'docker') return;
   try {
-    execSync(`chown -R 1000:1000 "${hostPath}"`, { stdio: 'pipe' });
+    execFileSync('chown', ['-R', '1000:1000', hostPath], { stdio: 'pipe' });
   } catch {
     /* Non-fatal — may not have permission */
   }

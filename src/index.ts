@@ -16,6 +16,7 @@ import {
 import { ensureRunning as ensureContainerRuntime } from './container-runtime.js';
 import {
   ContainerOutput,
+  mapTasksToSnapshot,
   runContainerAgent,
   writeGroupsSnapshot,
   writeTasksSnapshot,
@@ -41,7 +42,7 @@ import {
 } from './db.js';
 import { GroupQueue } from './group-queue.js';
 import { startIpcWatcher } from './ipc.js';
-import { formatMessages, formatOutbound, routeOutbound } from './router.js';
+import { formatMessages, formatOutbound, routeOutbound, stripInternalTags } from './router.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import type { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
@@ -200,8 +201,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     }
     if (result.result) {
       const raw = typeof result.result === 'string' ? result.result : JSON.stringify(result.result);
-      // Strip <internal>...</internal> blocks — agent uses these for internal reasoning
-      const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
+      const text = stripInternalTags(raw);
       logger.info({ group: group.name }, `Agent output: ${raw.slice(0, 200)}`);
       if (text) {
         await routeOutbound(channels, chatJid, text);
@@ -265,20 +265,7 @@ async function runAgent(
 
   // Update tasks snapshot for container to read (filtered by group)
   const tasks = getAllTasks();
-  writeTasksSnapshot(
-    group.folder,
-    isMain,
-    tasks.map((t) => ({
-      id: t.id,
-      groupFolder: t.group_folder,
-      prompt: t.prompt,
-      schedule_type: t.schedule_type,
-      schedule_value: t.schedule_value,
-      status: t.status,
-      next_run: t.next_run,
-      model: t.model,
-    })),
-  );
+  writeTasksSnapshot(group.folder, isMain, mapTasksToSnapshot(tasks));
 
   // Update available groups snapshot (main group only can see all groups)
   const availableGroups = getAvailableGroups();

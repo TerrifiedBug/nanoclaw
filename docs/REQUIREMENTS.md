@@ -20,7 +20,7 @@ The entire codebase should be something you can read and understand. One Node.js
 
 ### Security Through True Isolation
 
-Instead of application-level permission systems trying to prevent agents from accessing things, agents run in actual Linux containers (Apple Container). The isolation is at the OS level. Agents can only see what's explicitly mounted. Bash access is safe because commands run inside the container, not on your Mac.
+Instead of application-level permission systems trying to prevent agents from accessing things, agents run in actual Linux containers (Docker or Apple Container). The isolation is at the OS level. Agents can only see what's explicitly mounted. Bash access is safe because commands run inside the container, not on the host.
 
 ### Built for One User
 
@@ -48,31 +48,21 @@ Skills we'd love contributors to build:
 
 ### Communication Channels
 Skills to add or switch to different messaging platforms:
-- `/add-telegram` - Add Telegram as an input channel
 - `/add-slack` - Add Slack as an input channel
-- `/add-discord` - Add Discord as an input channel
 - `/add-sms` - Add SMS via Twilio or similar
-- `/convert-to-telegram` - Replace WhatsApp with Telegram entirely
 
-### Container Runtime
-The project currently uses Apple Container (macOS-only). We need:
-- `/convert-to-docker` - Replace Apple Container with standard Docker
-- This unlocks Linux support and broader deployment options
-
-### Platform Support
-- `/setup-linux` - Make the full setup work on Linux (depends on Docker conversion)
-- `/setup-windows` - Windows support via WSL2 + Docker
+Note: Telegram, Discord, and WhatsApp are already supported via channel plugins.
 
 ---
 
 ## Vision
 
-A personal Claude assistant accessible via WhatsApp, with minimal custom code.
+A personal Claude assistant accessible via messaging channels, with minimal custom code.
 
 **Core components:**
 - **Claude Agent SDK** as the core agent
-- **Apple Container** for isolated agent execution (Linux VMs)
-- **WhatsApp** as the primary I/O channel
+- **Container isolation** for agent execution (Docker on Linux, Apple Container on macOS)
+- **Channel plugins** for messaging I/O (WhatsApp, Telegram, Discord, etc.)
 - **Persistent memory** per conversation and globally
 - **Scheduled tasks** that run Claude and can message back
 - **Web access** for search and browsing
@@ -104,7 +94,7 @@ A personal Claude assistant accessible via WhatsApp, with minimal custom code.
 - Sessions auto-compact when context gets too long, preserving critical information
 
 ### Container Isolation
-- All agents run inside Apple Container (lightweight Linux VMs)
+- All agents run inside containers (Docker or Apple Container)
 - Each agent invocation spawns a container with mounted directories
 - Containers provide filesystem isolation - agents can only see mounted paths
 - Bash access is safe because commands run inside the container, not on the host
@@ -137,10 +127,10 @@ A personal Claude assistant accessible via WhatsApp, with minimal custom code.
 
 ## Integration Points
 
-### WhatsApp
-- Using baileys library for WhatsApp Web connection
+### Channels
+- Messaging integrations are loaded as channel plugins (`plugins/channels/*/`)
 - Messages stored in SQLite, polled by router
-- QR code authentication during setup
+- Authentication handled per-channel (QR for WhatsApp, bot token for Telegram, etc.)
 
 ### Scheduler
 - Built-in scheduler runs on the host, spawns containers for task execution
@@ -171,11 +161,13 @@ A personal Claude assistant accessible via WhatsApp, with minimal custom code.
 - Each user gets a custom setup matching their exact needs
 
 ### Skills
-- `/setup` - Install dependencies, authenticate WhatsApp, configure scheduler, start services
-- `/customize` - General-purpose skill for adding capabilities (new channels like Telegram, new integrations, behavior changes)
+- `/nanoclaw-setup` - Install dependencies, authenticate channels, configure services
+- `/nanoclaw-customize` - General-purpose skill for adding capabilities and behavior changes
+- `/create-channel-plugin` - Build a new channel plugin from scratch
+- `/create-skill-plugin` - Build a new skill plugin from scratch
 
 ### Deployment
-- Runs on local Mac via launchd
+- Runs via systemd (Linux) or launchd (macOS)
 - Single Node.js process handles everything
 
 ---

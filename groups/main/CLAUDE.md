@@ -140,7 +140,7 @@ sqlite3 /workspace/project/store/messages.db "
 
 ### Registered Groups Config
 
-Groups are registered in `/workspace/project/data/registered_groups.json`:
+Groups are registered in the SQLite database at `/workspace/project/store/messages.db` (table: `registered_groups`). Example structure:
 
 ```json
 {
@@ -175,12 +175,11 @@ Fields:
 
 ### Adding a Group
 
-1. Query the database to find the group's JID
-2. Read `/workspace/project/data/registered_groups.json`
-3. Add the new group entry with `containerConfig` if needed
-4. Write the updated JSON back
-5. Create the group folder: `/workspace/project/groups/{folder-name}/`
-6. Optionally create an initial `CLAUDE.md` for the group
+Use the `register_group` IPC task type to add new groups:
+1. Find the group's JID from the channel (e.g., query messages table)
+2. Send a `register_group` IPC request with `jid`, `name`, `folder`, `trigger`, and optional `containerConfig`
+3. Create the group folder: `/workspace/project/groups/{folder-name}/`
+4. Optionally create an initial `CLAUDE.md` for the group
 
 Example folder name conventions:
 - "Family Chat" → `family-chat`
@@ -215,14 +214,12 @@ The directory will appear at `/workspace/extra/webapp` in that group's container
 
 ### Removing a Group
 
-1. Read `/workspace/project/data/registered_groups.json`
-2. Remove the entry for that group
-3. Write the updated JSON back
-4. The group folder and its files remain (don't delete them)
+1. Delete the group from the database: `DELETE FROM registered_groups WHERE jid = ?`
+2. The group folder and its files remain (don't delete them)
 
 ### Listing Groups
 
-Read `/workspace/project/data/registered_groups.json` and format it nicely.
+Query the database: `SELECT * FROM registered_groups` and format it nicely.
 
 ---
 
@@ -234,7 +231,7 @@ You can read and write to `/workspace/project/groups/global/CLAUDE.md` for facts
 
 ## Scheduling for Other Groups
 
-When scheduling tasks for other groups, use the `target_group_jid` parameter with the group's JID from `registered_groups.json`:
+When scheduling tasks for other groups, use the `target_group_jid` parameter with the group's JID from the `registered_groups` table:
 - `schedule_task(prompt: "...", schedule_type: "cron", schedule_value: "0 9 * * 1", target_group_jid: "120363336345536173@g.us")` (JID format depends on channel)
 
 The task will run in that group's context with access to their files and memory.

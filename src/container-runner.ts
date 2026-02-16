@@ -19,7 +19,7 @@ import * as containerRuntime from './container-runtime.js';
 import { readEnvFile } from './env.js';
 import { logger } from './logger.js';
 import { validateAdditionalMounts } from './mount-security.js';
-import { RegisteredGroup } from './types.js';
+import { RegisteredGroup, ScheduledTask } from './types.js';
 import type { PluginRegistry } from './plugin-loader.js';
 
 let pluginRegistry: PluginRegistry | null = null;
@@ -134,7 +134,9 @@ function buildVolumeMounts(
   if (pluginRegistry) {
     const mergedMcp = pluginRegistry.getMergedMcpConfig(mcpJsonFile, scopeChannel, scopeGroup);
     if (Object.keys(mergedMcp.mcpServers).length > 0) {
-      const mergedMcpPath = path.join(DATA_DIR, 'merged-mcp.json');
+      const mergedMcpDir = path.join(DATA_DIR, 'env', group.folder);
+      fs.mkdirSync(mergedMcpDir, { recursive: true });
+      const mergedMcpPath = path.join(mergedMcpDir, 'merged-mcp.json');
       fs.writeFileSync(mergedMcpPath, JSON.stringify(mergedMcp, null, 2));
       mounts.push({
         hostPath: mergedMcpPath,
@@ -245,7 +247,8 @@ function buildVolumeMounts(
 
   // Environment file directory (workaround for Apple Container -i env var bug)
   // Only expose specific auth variables needed by Claude Code, not the entire .env
-  const envDir = path.join(DATA_DIR, 'env');
+  // Per-group directory prevents race conditions during concurrent container spawns
+  const envDir = path.join(DATA_DIR, 'env', group.folder);
   fs.mkdirSync(envDir, { recursive: true });
   const envFile = path.join(projectRoot, '.env');
   if (fs.existsSync(envFile)) {
@@ -750,6 +753,20 @@ export async function runContainerAgent(
       });
     });
   });
+}
+
+/** Map ScheduledTask DB rows to the snapshot format used by writeTasksSnapshot. */
+export function mapTasksToSnapshot(tasks: ScheduledTask[]) {
+  return tasks.map((t) => ({
+    id: t.id,
+    groupFolder: t.group_folder,
+    prompt: t.prompt,
+    schedule_type: t.schedule_type,
+    schedule_value: t.schedule_value,
+    status: t.status,
+    next_run: t.next_run,
+    model: t.model,
+  }));
 }
 
 export function writeTasksSnapshot(

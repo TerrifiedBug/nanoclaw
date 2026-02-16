@@ -184,7 +184,7 @@ After authentication, the user needs to register their main chat. This is handle
 Start the app briefly to sync group metadata, then query:
 
 ```bash
-sqlite3 data/messages.db "SELECT jid, name FROM chats WHERE jid LIKE '%@g.us' AND jid != '__group_sync__' ORDER BY last_message_time DESC LIMIT 20"
+sqlite3 store/messages.db "SELECT jid, name FROM chats WHERE jid LIKE '%@g.us' AND jid != '__group_sync__' ORDER BY last_message_time DESC LIMIT 20"
 ```
 
 ### Finding Personal Chat JID

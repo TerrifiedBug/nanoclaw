@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { ASSISTANT_NAME, DATA_DIR, STORE_DIR } from './config.js';
+import { logger } from './logger.js';
 import { NewMessage, RegisteredGroup, ScheduledTask, TaskRunLog } from './types.js';
 
 let db: Database.Database;
@@ -27,6 +28,7 @@ function createSchema(database: Database.Database): void {
       FOREIGN KEY (chat_jid) REFERENCES chats(jid)
     );
     CREATE INDEX IF NOT EXISTS idx_timestamp ON messages(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_chat_timestamp ON messages(chat_jid, timestamp);
 
     CREATE TABLE IF NOT EXISTS scheduled_tasks (
       id TEXT PRIMARY KEY,
@@ -75,46 +77,31 @@ function createSchema(database: Database.Database): void {
     );
   `);
 
-  // Add context_mode column if it doesn't exist (migration for existing DBs)
-  try {
-    database.exec(
-      `ALTER TABLE scheduled_tasks ADD COLUMN context_mode TEXT DEFAULT 'isolated'`,
-    );
-  } catch {
-    /* column already exists */
-  }
+  // Schema migrations — add columns if they don't exist.
+  // Only ignore "duplicate column" errors; rethrow anything else (disk full, corruption).
+  const migrate = (sql: string) => {
+    try {
+      database.exec(sql);
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('duplicate column')) return;
+      throw err;
+    }
+  };
 
-  // Add model column if it doesn't exist (migration for per-task model selection)
-  try {
-    database.exec(
-      `ALTER TABLE scheduled_tasks ADD COLUMN model TEXT DEFAULT 'claude-sonnet-4-5'`,
-    );
-  } catch {
-    /* column already exists */
-  }
+  migrate(`ALTER TABLE scheduled_tasks ADD COLUMN context_mode TEXT DEFAULT 'isolated'`);
+  migrate(`ALTER TABLE scheduled_tasks ADD COLUMN model TEXT DEFAULT 'claude-sonnet-4-5'`);
+  migrate(`ALTER TABLE registered_groups ADD COLUMN channel TEXT`);
 
-  // Add is_bot_message column if it doesn't exist (migration for existing DBs)
+  // is_bot_message needs a backfill after the column add
   try {
     database.exec(
       `ALTER TABLE messages ADD COLUMN is_bot_message INTEGER DEFAULT 0`,
     );
-    // Backfill: mark existing bot messages that used the content prefix pattern
     database.prepare(
       `UPDATE messages SET is_bot_message = 1 WHERE content LIKE ?`,
     ).run(`${ASSISTANT_NAME}:%`);
-  } catch {
-    /* column already exists */
-  }
-
-  // Add channel column to registered_groups (identifies which channel plugin owns this group).
-  // Groups registered before this migration will have channel = NULL.
-  // New groups get their channel set when registered through the plugin system.
-  try {
-    database.exec(
-      `ALTER TABLE registered_groups ADD COLUMN channel TEXT`,
-    );
-  } catch {
-    /* column already exists */
+  } catch (err) {
+    if (!(err instanceof Error && err.message.includes('duplicate column'))) throw err;
   }
 }
 
@@ -123,17 +110,59 @@ export function initDatabase(): void {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
   db = new Database(dbPath);
+  db.pragma('journal_mode = WAL');
   createSchema(db);
 
   // Migrate from JSON files if they exist
   migrateJsonState();
 
+  // Create a backup on startup
+  backupDatabase();
+
+  // Prune old task run logs
+  const pruned = pruneTaskRunLogs();
+  if (pruned > 0) {
+    logger.info({ pruned }, 'Pruned old task run logs');
+  }
 }
 
 /** @internal - for tests only. Creates a fresh in-memory database. */
 export function _initTestDatabase(): void {
   db = new Database(':memory:');
   createSchema(db);
+}
+
+/**
+ * Create a backup of the database. Uses SQLite's online backup API
+ * which is safe to call while the database is in use.
+ * Keeps the two most recent backups and removes older ones.
+ */
+export function backupDatabase(): void {
+  try {
+    const dbPath = path.join(STORE_DIR, 'messages.db');
+    const backupDir = path.join(STORE_DIR, 'backups');
+    fs.mkdirSync(backupDir, { recursive: true });
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupPath = path.join(backupDir, `messages-${timestamp}.db`);
+
+    db.backup(backupPath).then(() => {
+      logger.info({ backupPath }, 'Database backup completed');
+
+      // Keep only the 2 most recent backups
+      const backups = fs.readdirSync(backupDir)
+        .filter((f) => f.startsWith('messages-') && f.endsWith('.db'))
+        .sort()
+        .reverse();
+      for (const old of backups.slice(2)) {
+        fs.unlinkSync(path.join(backupDir, old));
+      }
+    }).catch((err) => {
+      logger.error({ err }, 'Database backup failed');
+    });
+  } catch (err) {
+    logger.error({ err }, 'Database backup failed');
+  }
 }
 
 /**
@@ -485,6 +514,14 @@ export function logTaskRun(log: TaskRunLog): void {
     log.result,
     log.error,
   );
+}
+
+/** Delete task_run_logs older than the given number of days. */
+export function pruneTaskRunLogs(olderThanDays = 30): number {
+  const result = db.prepare(
+    `DELETE FROM task_run_logs WHERE run_at < datetime('now', ?)`,
+  ).run(`-${olderThanDays} days`);
+  return result.changes;
 }
 
 // --- Router state accessors ---

@@ -16,6 +16,9 @@ Single Node.js process that connects to messaging channels via plugins, routes m
 | `src/router.ts` | Message formatting and outbound routing |
 | `src/config.ts` | Trigger pattern, paths, intervals |
 | `src/container-runner.ts` | Spawns agent containers with mounts |
+| `src/container-runtime.ts` | Container runtime abstraction (Docker/Apple Container) |
+| `src/mount-security.ts` | Mount path validation and allowlist |
+| `src/group-queue.ts` | Concurrency management, container lifecycle |
 | `src/task-scheduler.ts` | Runs scheduled tasks |
 | `src/db.ts` | SQLite operations |
 | `plugins/channels/*/index.js` | Channel plugins (WhatsApp, Discord, etc.) |
@@ -46,10 +49,17 @@ npm run build        # Compile TypeScript
 ./container/build.sh # Rebuild agent container
 ```
 
-Service management:
+Service management (macOS):
 ```bash
 launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist
 launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist
+```
+
+Service management (Linux):
+```bash
+sudo systemctl start nanoclaw
+sudo systemctl stop nanoclaw
+sudo journalctl -u nanoclaw -f   # Follow logs
 ```
 
 ## Container Build Cache
