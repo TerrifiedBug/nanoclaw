@@ -9,7 +9,7 @@ Read-only email access for agent containers via IMAP. Supports multiple provider
 
 ## Prerequisites
 
-- NanoClaw must be set up and running (`/setup`)
+- NanoClaw must be set up and running (`/nanoclaw-setup`)
 - For Gmail: 2-Step Verification enabled on the Google Account
 - For Yahoo: Account Security settings accessible
 

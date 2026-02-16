@@ -9,7 +9,7 @@ Connects NanoClaw to an n8n instance so agents can create and manage automated w
 
 ## Prerequisites
 
-- NanoClaw must be set up and running (`/setup`)
+- NanoClaw must be set up and running (`/nanoclaw-setup`)
 - An n8n instance with MCP server enabled (Settings > MCP Server)
 - **Optional:** The webhook plugin (`/add-webhook`) -- only needed if you want n8n workflows to trigger agent turns
 

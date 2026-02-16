@@ -9,7 +9,7 @@ Configures Brave Search API access for agent containers, enabling web search for
 
 ## Prerequisites
 
-- NanoClaw must be set up and running (`/setup`)
+- NanoClaw must be set up and running (`/nanoclaw-setup`)
 - A Brave Search API key (free tier: 2,000 queries/month)
 
 ## Install

@@ -9,7 +9,7 @@ Adds weather forecast capability to NanoClaw agents using free public APIs (no A
 
 ## Prerequisites
 
-- NanoClaw must be set up and running (`/setup`)
+- NanoClaw must be set up and running (`/nanoclaw-setup`)
 
 ## Install
 

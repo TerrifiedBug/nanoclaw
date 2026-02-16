@@ -11,7 +11,7 @@ Each group gets its own URL path (`/webhook/<group-folder>`) and unique secret t
 
 ## Prerequisites
 
-- NanoClaw must be set up and running (`/setup`)
+- NanoClaw must be set up and running (`/nanoclaw-setup`)
 - At least one channel group must be registered (via `/add-channel`)
 
 ## Install / Add Route

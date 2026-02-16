@@ -9,7 +9,7 @@ Configures Home Assistant integration for agent containers using HA's official M
 
 ## Prerequisites
 
-- NanoClaw must be set up and running (`/setup`)
+- NanoClaw must be set up and running (`/nanoclaw-setup`)
 - Home Assistant instance accessible from this server (local network or remote)
 - Home Assistant 2025.2 or newer (MCP Server integration was introduced in 2025.2)
 

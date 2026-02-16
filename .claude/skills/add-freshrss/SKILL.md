@@ -9,7 +9,7 @@ Configures RSS feed access for agent containers using a self-hosted FreshRSS ins
 
 ## Prerequisites
 
-- NanoClaw must be set up and running (`/setup`)
+- NanoClaw must be set up and running (`/nanoclaw-setup`)
 - A self-hosted FreshRSS instance with API access enabled
 
 ## Step 1: Check Existing Configuration

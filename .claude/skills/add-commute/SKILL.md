@@ -9,7 +9,7 @@ Adds live traffic-based travel time lookups using the Waze routing API (no API k
 
 ## Prerequisites
 
-- NanoClaw must be set up and running (`/setup`)
+- NanoClaw must be set up and running (`/nanoclaw-setup`)
 
 ## Install
 

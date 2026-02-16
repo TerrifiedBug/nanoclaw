@@ -116,12 +116,17 @@ This document tracks all legitimate divergences between our fork's `main` branch
 
 `add-gmail`, `add-parallel`, `add-telegram-swarm`, `add-telegram`, `x-integration`
 
-### Superseded by our architecture (2)
+### Superseded by our architecture (1)
 
 | Skill | Why |
 |-------|-----|
-| `convert-to-docker` | Our fork uses Docker natively via `container-runtime.ts`; this skill is redundant but kept for upstream compat |
 | `debug` | Upstream version is WhatsApp-specific; ours is channel-agnostic |
+
+### Removed from upstream (1)
+
+| Skill | Why |
+|-------|-----|
+| `convert-to-docker` | Deleted — Docker support is baked into `container-runtime.ts` and auto-detected by setup; no conversion needed |
 
 ## Not in Fork (upstream-only, intentionally excluded)
 
@@ -174,7 +179,7 @@ Collapsed divergences: `src/env.ts`, `src/db.ts` is_bot_message, `src/config.ts`
 | Divergence | Why Not |
 |------------|---------|
 | Plugin system | Feature — upstream uses skills-only architecture |
-| Docker runtime abstraction | Compatibility — `convert-to-docker` skill exists upstream |
+| Docker runtime abstraction | Feature — upstream uses Apple Container only; we abstract both via `container-runtime.ts` |
 | Media download pipeline + `mediaHostPath` | Capability — enables host-side plugin hooks (e.g., voice transcription) |
 | Task model selection | Enhancement |
 | Task error notifications | Enhancement |

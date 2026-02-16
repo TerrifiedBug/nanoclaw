@@ -123,7 +123,7 @@ Before generating:
 
 ### Escalation:
 
-- If the platform requires core code changes: "This would need changes to NanoClaw's core code. You could use `/customize` for that."
+- If the platform requires core code changes: "This would need changes to NanoClaw's core code. You could use `/nanoclaw-customize` for that."
 - If npm dependencies needed: document as prerequisite in the installation skill
 - If container image changes needed (system packages): document as manual step
 
@@ -133,7 +133,7 @@ You MUST create files in **two** locations:
 
 ### 1. Channel plugin files: `.claude/skills/channels/{name}/`
 
-The `files/` subdirectory holds the actual channel plugin code — it gets copied to `plugins/channels/{name}/` when installed. `/setup` scans this directory to discover available (but not yet installed) channels.
+The `files/` subdirectory holds the actual channel plugin code — it gets copied to `plugins/channels/{name}/` when installed. `/nanoclaw-setup` scans this directory to discover available (but not yet installed) channels.
 
 ```
 .claude/skills/channels/{name}/
@@ -159,7 +159,7 @@ The `add-{name}` SKILL.md must:
 - Reference the channel files with: `cp -r .claude/skills/channels/{name}/files/* plugins/channels/{name}/`
 - Include registration and verification steps
 
-**Why two locations?** The `channels/{name}/` directory holds the plugin source code and is scanned by `/setup` for channel discovery. The `add-{name}/` skill is the user-invocable command that appears in the skills list. Both are needed — without `add-{name}/`, users can't find the installer; without `channels/{name}/`, `/setup` can't discover available channels.
+**Why two locations?** The `channels/{name}/` directory holds the plugin source code and is scanned by `/nanoclaw-setup` for channel discovery. The `add-{name}/` skill is the user-invocable command that appears in the skills list. Both are needed — without `add-{name}/`, users can't find the installer; without `channels/{name}/`, `/nanoclaw-setup` can't discover available channels.
 
 ## Channel Plugin Templates
 
@@ -325,7 +325,7 @@ Adds {Platform} as a messaging channel to NanoClaw.
 
 ## Prerequisites
 
-- NanoClaw must be set up and running (`/setup`)
+- NanoClaw must be set up and running (`/nanoclaw-setup`)
 {- Platform-specific prerequisites (bot creation, API keys, etc.)}
 
 ## Install

@@ -9,7 +9,7 @@ Configures GitHub API access for agent containers, enabling repo monitoring, PR/
 
 ## Prerequisites
 
-- NanoClaw must be set up and running (`/setup`)
+- NanoClaw must be set up and running (`/nanoclaw-setup`)
 - A GitHub account
 
 ## Install

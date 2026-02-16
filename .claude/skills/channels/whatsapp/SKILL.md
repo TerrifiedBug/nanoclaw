@@ -2,7 +2,7 @@
 name: channel-whatsapp
 description: >
   WhatsApp channel authentication and setup. Handles QR code scanning (browser or terminal)
-  and pairing code methods. Called by /setup during initial configuration or when
+  and pairing code methods. Called by /nanoclaw-setup during initial configuration or when
   re-authentication is needed.
 ---
 
@@ -93,7 +93,7 @@ const fs = require('fs');
 const qrData = fs.readFileSync('data/channels/whatsapp/qr-data.txt', 'utf8');
 QR.toString(qrData, { type: 'svg' }, (err, svg) => {
   if (err) process.exit(1);
-  const template = fs.readFileSync('.claude/skills/setup/qr-auth.html', 'utf8');
+  const template = fs.readFileSync('.claude/skills/nanoclaw-setup/qr-auth.html', 'utf8');
   fs.writeFileSync('data/channels/whatsapp/qr-auth.html', template.replace('{{QR_SVG}}', svg));
   console.log('done');
 });
@@ -170,7 +170,7 @@ Wait for the user to confirm authentication succeeded, then continue to the next
 
 ## Register a Chat
 
-After authentication, the user needs to register their main chat. This is handled by `/setup` (section 6c) or `/add-channel`.
+After authentication, the user needs to register their main chat. This is handled by `/nanoclaw-setup` (section 6c) or `/add-channel`.
 
 ### WhatsApp JID Formats
 

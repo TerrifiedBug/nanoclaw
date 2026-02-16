@@ -12,7 +12,7 @@ Adds WhatsApp as a messaging channel to NanoClaw using the Baileys library.
 
 ## Prerequisites
 
-- NanoClaw must be set up and running (`/setup`)
+- NanoClaw must be set up and running (`/nanoclaw-setup`)
 - A phone number with WhatsApp installed (for QR code authentication)
 
 ## Install
