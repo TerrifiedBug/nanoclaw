@@ -38,16 +38,26 @@ This document describes all changes made in this fork compared to the upstream [
 
 ### How it works
 
-Plugins live in `plugins/` with a `plugin.json` manifest:
+Plugins live in `plugins/` with a `plugin.json` manifest. Skill plugin example:
+
+```json
+{
+  "name": "brave-search",
+  "description": "Web search via Brave Search API",
+  "containerEnvVars": ["BRAVE_API_KEY"],
+  "hooks": []
+}
+```
+
+Channel plugin example:
 
 ```json
 {
   "name": "whatsapp",
-  "type": "channel",
-  "channel": "whatsapp",
-  "envVars": ["WHATSAPP_AUTH_DIR"],
-  "containerMounts": [...],
-  "containerSkills": "container-skills/"
+  "description": "WhatsApp via Baileys",
+  "hooks": ["onChannel"],
+  "channelPlugin": true,
+  "dependencies": true
 }
 ```
 
@@ -92,7 +102,7 @@ The plugin system means:
 - **New channels** (Discord, Telegram, email) can be added without touching core
 - **New integrations** (calendar, weather, Home Assistant) are installed via skills that drop plugin files
 - **Each deployment is different** — plugins are gitignored, so the repo stays clean
-- **Uninstalling** is just deleting the plugin directory
+- **Uninstalling** is as easy as calling the skill and asking it to uninstall
 
 ---
 
