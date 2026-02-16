@@ -32,7 +32,7 @@ Use the save endpoint for important conclusions or facts the user shares that ar
 ```bash
 curl -s -X POST "$CLAUDE_MEM_URL/api/memory/save" \
   -H "Content-Type: application/json" \
-  -d '{"text": "User prefers flat white coffee", "project": "nanoclaw-mem"}'
+  -d "{\"text\": \"User prefers flat white coffee\", \"project\": \"nanoclaw-$NANOCLAW_GROUP_FOLDER\"}"
 ```
 
 ## When to Search Memory
