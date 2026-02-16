@@ -40,4 +40,8 @@ plugins/*
 !plugins/.gitkeep
 # Core plugins — ship with repo
 !plugins/agent-browser/
+# Channel plugins — installed from skill templates, not committed
+!plugins/channels/
+plugins/channels/*
+!plugins/channels/.gitkeep
 
