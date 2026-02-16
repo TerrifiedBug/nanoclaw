@@ -77,46 +77,31 @@ function createSchema(database: Database.Database): void {
     );
   `);
 
-  // Add context_mode column if it doesn't exist (migration for existing DBs)
-  try {
-    database.exec(
-      `ALTER TABLE scheduled_tasks ADD COLUMN context_mode TEXT DEFAULT 'isolated'`,
-    );
-  } catch {
-    /* column already exists */
-  }
+  // Schema migrations — add columns if they don't exist.
+  // Only ignore "duplicate column" errors; rethrow anything else (disk full, corruption).
+  const migrate = (sql: string) => {
+    try {
+      database.exec(sql);
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('duplicate column')) return;
+      throw err;
+    }
+  };
 
-  // Add model column if it doesn't exist (migration for per-task model selection)
-  try {
-    database.exec(
-      `ALTER TABLE scheduled_tasks ADD COLUMN model TEXT DEFAULT 'claude-sonnet-4-5'`,
-    );
-  } catch {
-    /* column already exists */
-  }
+  migrate(`ALTER TABLE scheduled_tasks ADD COLUMN context_mode TEXT DEFAULT 'isolated'`);
+  migrate(`ALTER TABLE scheduled_tasks ADD COLUMN model TEXT DEFAULT 'claude-sonnet-4-5'`);
+  migrate(`ALTER TABLE registered_groups ADD COLUMN channel TEXT`);
 
-  // Add is_bot_message column if it doesn't exist (migration for existing DBs)
+  // is_bot_message needs a backfill after the column add
   try {
     database.exec(
       `ALTER TABLE messages ADD COLUMN is_bot_message INTEGER DEFAULT 0`,
     );
-    // Backfill: mark existing bot messages that used the content prefix pattern
     database.prepare(
       `UPDATE messages SET is_bot_message = 1 WHERE content LIKE ?`,
     ).run(`${ASSISTANT_NAME}:%`);
-  } catch {
-    /* column already exists */
-  }
-
-  // Add channel column to registered_groups (identifies which channel plugin owns this group).
-  // Groups registered before this migration will have channel = NULL.
-  // New groups get their channel set when registered through the plugin system.
-  try {
-    database.exec(
-      `ALTER TABLE registered_groups ADD COLUMN channel TEXT`,
-    );
-  } catch {
-    /* column already exists */
+  } catch (err) {
+    if (!(err instanceof Error && err.message.includes('duplicate column'))) throw err;
   }
 }
 

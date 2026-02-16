@@ -19,7 +19,7 @@ import * as containerRuntime from './container-runtime.js';
 import { readEnvFile } from './env.js';
 import { logger } from './logger.js';
 import { validateAdditionalMounts } from './mount-security.js';
-import { RegisteredGroup } from './types.js';
+import { RegisteredGroup, ScheduledTask } from './types.js';
 import type { PluginRegistry } from './plugin-loader.js';
 
 let pluginRegistry: PluginRegistry | null = null;
@@ -753,6 +753,20 @@ export async function runContainerAgent(
       });
     });
   });
+}
+
+/** Map ScheduledTask DB rows to the snapshot format used by writeTasksSnapshot. */
+export function mapTasksToSnapshot(tasks: ScheduledTask[]) {
+  return tasks.map((t) => ({
+    id: t.id,
+    groupFolder: t.group_folder,
+    prompt: t.prompt,
+    schedule_type: t.schedule_type,
+    schedule_value: t.schedule_value,
+    status: t.status,
+    next_run: t.next_run,
+    model: t.model,
+  }));
 }
 
 export function writeTasksSnapshot(

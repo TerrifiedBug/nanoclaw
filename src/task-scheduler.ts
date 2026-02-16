@@ -10,7 +10,7 @@ import {
   SCHEDULER_POLL_INTERVAL,
   TIMEZONE,
 } from './config.js';
-import { ContainerOutput, runContainerAgent, writeTasksSnapshot } from './container-runner.js';
+import { ContainerOutput, mapTasksToSnapshot, runContainerAgent, writeTasksSnapshot } from './container-runner.js';
 import {
   claimTask,
   getAllTasks,
@@ -21,6 +21,7 @@ import {
 } from './db.js';
 import { GroupQueue } from './group-queue.js';
 import { logger } from './logger.js';
+import { stripInternalTags } from './router.js';
 import { RegisteredGroup, ScheduledTask } from './types.js';
 
 export interface SchedulerDependencies {
@@ -73,20 +74,7 @@ async function runTask(
   // Update tasks snapshot for container to read (filtered by group)
   const isMain = task.group_folder === MAIN_GROUP_FOLDER;
   const tasks = getAllTasks();
-  writeTasksSnapshot(
-    task.group_folder,
-    isMain,
-    tasks.map((t) => ({
-      id: t.id,
-      groupFolder: t.group_folder,
-      prompt: t.prompt,
-      schedule_type: t.schedule_type,
-      schedule_value: t.schedule_value,
-      status: t.status,
-      next_run: t.next_run,
-      model: t.model,
-    })),
-  );
+  writeTasksSnapshot(task.group_folder, isMain, mapTasksToSnapshot(tasks));
 
   let result: string | null = null;
   let error: string | null = null;
@@ -129,8 +117,7 @@ async function runTask(
         }
         if (streamedOutput.result) {
           result = streamedOutput.result;
-          // Forward result to user (strip <internal> tags)
-          const text = streamedOutput.result.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
+          const text = stripInternalTags(streamedOutput.result);
           if (text) {
             await deps.sendMessage(task.chat_jid, text);
             hadSuccessfulResponse = true;
