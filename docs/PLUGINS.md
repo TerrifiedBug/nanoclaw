@@ -164,7 +164,7 @@ This makes skill files (like `SKILL.md`) available to Claude Code inside the con
 
 ### MCP Config (`mcp.json`)
 
-If a plugin has an `mcp.json` file, its `mcpServers` entries are merged with the root `.mcp.json` (if present) and any other plugins' MCP configs. The merged result is written to `data/merged-mcp.json` on the host and mounted read-only at `/workspace/.mcp.json` inside the container.
+If a plugin has an `mcp.json` file, its `mcpServers` entries are merged with the root `.mcp.json` (if present) and any other in-scope plugins' MCP configs. The merged result is written per-group to `data/env/{groupFolder}/merged-mcp.json` and mounted read-only at `/workspace/.mcp.json` inside that group's container. Plugin scoping means each group only gets the MCP servers from plugins that apply to its channel and folder.
 
 Example `mcp.json`:
 

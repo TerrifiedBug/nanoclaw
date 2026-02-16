@@ -82,7 +82,7 @@ Plugins integrate deeply with the container system at build time and runtime:
 
 - **`Dockerfile.partial`** — Plugins can declare extra image layers (e.g., calendar plugin installs `gogcli` and `cal-cli`). `container/build.sh` merges all partials before the final `COPY`/`ENTRYPOINT`.
 - **Container mounts** — Plugin manifests declare `containerMounts` which are injected alongside core mounts. Skills go to `/workspace/.claude/skills/{plugin}/`, hooks to `/workspace/plugin-hooks/`.
-- **MCP merging** — Each plugin can provide an `mcp.json` that gets merged into a single `data/merged-mcp.json` mounted at `/workspace/.mcp.json`.
+- **MCP merging** — Each plugin can provide an `mcp.json`. Per-group scoped configs are merged and written to `data/env/{groupFolder}/merged-mcp.json`, mounted at `/workspace/.mcp.json` in that group's container.
 - **Env var collection** — Plugin-declared `containerEnvVars` are filtered from `.env` and written to `data/env/` for container access.
 - **Scoping** — Plugins declare which channels and groups they apply to (`"channels": ["whatsapp"]`, `"groups": ["main"]`), so a Discord-only plugin won't load in WhatsApp containers.
 
