@@ -26,7 +26,7 @@ ls -d plugins/channels/*/plugin.json 2>/dev/null
 For each found plugin, read its `plugin.json` to get the name and description. Also check for existing registered groups:
 
 ```bash
-sqlite3 data/messages.db "SELECT jid, name, folder, channel FROM registered_groups ORDER BY channel, added_at"
+sqlite3 store/messages.db "SELECT jid, name, folder, channel FROM registered_groups ORDER BY channel, added_at"
 ```
 
 Present the findings to the user:
@@ -111,7 +111,7 @@ If running, the agent can discover WhatsApp groups via IPC. But since we're in C
 >
 > **Option A**: If the group has already messaged while NanoClaw was running, I can look it up:
 > ```bash
-> sqlite3 data/messages.db "SELECT jid, name, last_message_time FROM chats WHERE jid LIKE '%@g.us' ORDER BY last_message_time DESC LIMIT 20"
+> sqlite3 store/messages.db "SELECT jid, name, last_message_time FROM chats WHERE jid LIKE '%@g.us' ORDER BY last_message_time DESC LIMIT 20"
 > ```
 >
 > **Option B**: Send a message in the WhatsApp group, then I can find it in the chats table.
@@ -156,7 +156,7 @@ grep '^ASSISTANT_NAME=' .env | cut -d= -f2 || echo "Andy"
 Determine the channel name from the plugin. Then register via SQLite:
 
 ```bash
-sqlite3 data/messages.db "INSERT OR REPLACE INTO registered_groups (jid, name, folder, trigger_pattern, added_at, requires_trigger, channel) VALUES ('{jid}', '{name}', '{folder}', '{trigger}', datetime('now'), {requiresTrigger}, '{channel}')"
+sqlite3 store/messages.db "INSERT OR REPLACE INTO registered_groups (jid, name, folder, trigger_pattern, added_at, requires_trigger, channel) VALUES ('{jid}', '{name}', '{folder}', '{trigger}', datetime('now'), {requiresTrigger}, '{channel}')"
 ```
 
 Create the group's directory structure:
@@ -218,7 +218,7 @@ sleep 3
 pgrep -f 'node.*nanoclaw' > /dev/null && echo "SERVICE_RUNNING" || echo "SERVICE_FAILED"
 
 # Verify group is registered
-sqlite3 data/messages.db "SELECT jid, name, folder, channel FROM registered_groups WHERE folder = '{folder}'"
+sqlite3 store/messages.db "SELECT jid, name, folder, channel FROM registered_groups WHERE folder = '{folder}'"
 
 # Check logs for channel connection
 tail -20 logs/nanoclaw.log | grep -i '{channel}'
@@ -241,10 +241,10 @@ Before starting, always check the current state to avoid redundant work:
 for d in plugins/channels/*/plugin.json; do echo "$(dirname $d): $(cat $d | python3 -c 'import sys,json; print(json.load(sys.stdin).get(\"name\",\"unknown\"))' 2>/dev/null || echo 'unknown')"; done
 
 # What groups are already registered?
-sqlite3 data/messages.db "SELECT jid, name, folder, channel, requires_trigger FROM registered_groups" 2>/dev/null
+sqlite3 store/messages.db "SELECT jid, name, folder, channel, requires_trigger FROM registered_groups" 2>/dev/null
 
 # Is there a main group?
-sqlite3 data/messages.db "SELECT jid, name, channel FROM registered_groups WHERE folder = 'main'" 2>/dev/null
+sqlite3 store/messages.db "SELECT jid, name, channel FROM registered_groups WHERE folder = 'main'" 2>/dev/null
 
 # Is the service running?
 pgrep -f 'node.*nanoclaw' > /dev/null && echo "RUNNING" || echo "STOPPED"
