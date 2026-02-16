@@ -40,8 +40,4 @@ plugins/*
 !plugins/.gitkeep
 # Core plugins — ship with repo
 !plugins/agent-browser/
-!plugins/channels/
-plugins/channels/*
-!plugins/channels/whatsapp/
-!plugins/channels/telegram/
 

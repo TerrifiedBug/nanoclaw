@@ -67,14 +67,14 @@ This document tracks all legitimate divergences between our fork's `main` branch
 | File | Status | Categories | Summary |
 |------|--------|------------|---------|
 | `.dockerignore` | **New** | OTHER | Excludes non-build dirs from Docker context |
-| `.gitignore` | Modified | PLUGIN, OTHER | `plugins/*` and `!plugins/.gitkeep`; removed docs/plans/, added .mcp.json |
+| `.gitignore` | Modified | PLUGIN, OTHER | `plugins/*` and `!plugins/.gitkeep`; channel plugins gitignored (templates-only); removed docs/plans/, added .mcp.json |
 | `plugins/.gitkeep` | **New** | PLUGIN | Tracks empty plugins directory |
 | `CLAUDE.md` | Modified | SECURITY | Added security section referencing `docs/SECURITY.md` |
 | `groups/global/CLAUDE.md` | Modified | OTHER | References `$ASSISTANT_NAME` env var (upstream still hardcodes "Andy") |
 | `groups/main/CLAUDE.md` | Modified | SECURITY, OTHER | Anti-prompt-injection rules, `$ASSISTANT_NAME` env var, generic example triggers |
 | `docs/DIVERGENCES.md` | **New** | OTHER | This file — fork divergence tracking |
 | `docs/PLUGINS.md` | Modified | PLUGIN | Added Dockerfile.partial documentation section |
-| `docs/CHANNEL_PLUGINS.md` | Modified | PLUGIN | Removed outdated WhatsApp backfill reference |
+| `docs/CHANNEL_PLUGINS.md` | Modified | PLUGIN | Templates-only architecture (no committed channel plugins), `sender` param docs, JID prefix standardisation |
 | `package.json` | Modified | PLUGIN | Channel SDK deps removed (moved to per-plugin packages) |
 | `package-lock.json` | Modified | OTHER | Platform-specific (Linux vs macOS optional deps) |
 | `.mcp.json` | Untracked | OTHER | Gitignored — modified by skill installations |
