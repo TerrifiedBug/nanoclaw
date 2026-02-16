@@ -11,7 +11,7 @@ Works with any channel plugin that sets `mediaType='audio'` and `mediaHostPath` 
 
 ## Prerequisites
 
-- NanoClaw must be set up and running (`/setup`)
+- NanoClaw must be set up and running (`/nanoclaw-setup`)
 - At least one channel plugin installed with voice/audio support
 
 ## Step 1: Check Existing Configuration

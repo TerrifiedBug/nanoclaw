@@ -9,7 +9,7 @@ Adds the ability to import recipes into your Norish instance by URL. When the ag
 
 ## Prerequisites
 
-- NanoClaw must be set up and running (`/setup`)
+- NanoClaw must be set up and running (`/nanoclaw-setup`)
 - A running Norish instance with an API key
 
 ## Install

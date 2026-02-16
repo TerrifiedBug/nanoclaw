@@ -12,7 +12,7 @@ Calendar integration for NanoClaw agent containers. Two tools are available:
 
 ## Prerequisites
 
-- NanoClaw must be set up and running (`/setup`)
+- NanoClaw must be set up and running (`/nanoclaw-setup`)
 
 ## Install
 

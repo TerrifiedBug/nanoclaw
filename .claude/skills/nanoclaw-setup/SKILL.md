@@ -1,5 +1,5 @@
 ---
-name: setup
+name: nanoclaw-setup
 description: Run initial NanoClaw setup. Use when user wants to install dependencies, authenticate a channel, register their main channel, or start the background services. Triggers on "setup", "install", "configure nanoclaw", or first-time setup requests.
 ---
 
@@ -92,10 +92,27 @@ which docker && docker info >/dev/null 2>&1 && echo "Docker: installed and runni
 
 Apple Container is macOS-only. Use Docker instead.
 
-Tell the user:
-> You're on Linux, so we'll use Docker for container isolation. Let me set that up now.
+Docker is supported natively. Tell the user:
+> You're on Linux, so we'll use Docker for container isolation.
 
-**Use the `/convert-to-docker` skill** to convert the codebase to Docker, then continue to Section 3.
+Verify Docker is installed and running:
+
+```bash
+docker --version && docker info >/dev/null 2>&1 && echo "Docker ready" || echo "Docker not installed or not running"
+```
+
+If not installed:
+> Docker is required for running agents in isolated containers.
+>
+> ```bash
+> curl -fsSL https://get.docker.com | sh
+> sudo systemctl start docker
+> sudo usermod -aG docker $USER  # Then log out and back in
+> ```
+>
+> Let me know when Docker is running.
+
+Wait for confirmation, verify with `docker info`, then continue to Section 3.
 
 ### If on macOS
 
@@ -131,10 +148,17 @@ container --version
 
 #### Option B: Docker
 
-Tell the user:
-> You've chosen Docker. Let me set that up now.
+Docker is supported natively. Verify it's installed:
 
-**Use the `/convert-to-docker` skill** to convert the codebase to Docker, then continue to Section 3.
+```bash
+docker --version && docker info >/dev/null 2>&1 && echo "Docker ready" || echo "Docker not installed or not running"
+```
+
+If not installed, tell the user:
+> Download Docker Desktop from https://docker.com/products/docker-desktop
+> Install and start it, then let me know when the whale icon stops animating.
+
+Wait for confirmation, verify with `docker info`, then continue to Section 3.
 
 ## 3. Configure Claude Authentication
 

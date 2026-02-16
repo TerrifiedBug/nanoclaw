@@ -3,6 +3,7 @@
 This document describes all changes made in this fork compared to the upstream [qwibitai/nanoclaw](https://github.com/qwibitai/nanoclaw) repository. It's intended to give the upstream maintainer a clear picture of what this fork does differently, why, and which changes might be worth upstreaming.
 
 **Stats:** 198 non-merge commits, 148 files changed, ~16,800 insertions, ~6,000 deletions
+**Code only (excluding docs, lock files, skills, assets):** 43 files changed, +2,393 / -1,537 lines
 
 ---
 

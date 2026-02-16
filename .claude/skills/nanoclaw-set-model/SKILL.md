@@ -1,5 +1,5 @@
 ---
-name: set-model
+name: nanoclaw-set-model
 description: Change the Claude model used by NanoClaw agent containers
 triggers:
   - set model

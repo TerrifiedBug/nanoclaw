@@ -9,7 +9,7 @@ Configures live UK train departure and arrival data for agent containers using t
 
 ## Prerequisites
 
-- NanoClaw must be set up and running (`/setup`)
+- NanoClaw must be set up and running (`/nanoclaw-setup`)
 
 ## Step 1: Check Existing Configuration
 
