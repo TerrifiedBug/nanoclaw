@@ -450,24 +450,3 @@ This Fork:
 | Setup | Shell scripts hardcoding WhatsApp | Channel-agnostic SKILL.md with plugin detection |
 | Scheduled tasks | Single model, silent failures | Per-task model selection, error notifications, atomic claiming |
 
----
-
-## What's Upstream-Ready
-
-These changes could be upstreamed with minimal modification:
-
-1. **Bug fixes** — PRs #245, #246, #247, #248 (already submitted)
-2. **Security hooks** — `security-hooks.ts` is additive, no core changes needed
-3. **Typing indicator fixes** — Already merged upstream from our earlier PRs
-4. **Token count workflow** — Already upstream
-
-## What's Fork-Specific
-
-These are architectural decisions that differ from upstream's direction:
-
-1. **Plugin system** — Upstream prefers skills-only; we use runtime plugins
-2. **Channel abstraction** — Upstream is WhatsApp-first; we're channel-agnostic
-3. **Docker runtime** — Upstream targets Apple Container; we abstract both
-4. **Media pipeline** — Upstream doesn't download media; we do
-5. **Task model selection** — Upstream uses one model; we allow per-task model choice
-6. **Setup skill** — Upstream now uses numbered shell scripts (PR #258); we keep monolithic SKILL.md with plugin flow
