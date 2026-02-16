@@ -281,13 +281,6 @@ These are clean fixes submitted to upstream. If they merge, the divergences coll
 | [#247](https://github.com/qwibitai/nanoclaw/pull/247) | Consecutive error tracking — counts sequential failures, notifies user | `src/index.ts` |
 | [#248](https://github.com/qwibitai/nanoclaw/pull/248) | Duplicate task creation prevention — warns in IPC tool description | `container/agent-runner/src/ipc-mcp-stdio.ts` |
 
-### Other fixes in fork (not PR'd — too coupled to fork architecture)
-
-- **Env file quoting** — Only exists in our env mount mechanism
-- **90s restart delay prevention** — Fixed race condition in shutdown/restart
-- **Relative hostPath resolution** — Plugin container mounts with relative paths resolved to absolute
-- **OAuth credential sync** — Detects OAuth credentials file in setup state checks
-
 ---
 
 ## 8. New Skills (25)
