@@ -328,7 +328,7 @@ EMAIL_ACCOUNTS=[{"name":"Gmail","host":"imap.gmail.com","port":993,"user":"you@g
 
 ## When to Use This vs Gmail (gog)
 
-If the Gmail plugin (`gog` CLI) is also installed, **prefer gog for Gmail accounts** -- it has full Gmail API search, send, labels, and drafts. Use this IMAP skill only for non-Gmail providers (Yahoo, Outlook, iCloud, etc.) or when you specifically need to mark emails as read for digests across all accounts.
+This skill is **read-only** -- it can check, search, and mark emails as read, but cannot send or delete emails. If the Gmail plugin (`gog` CLI) is also installed, prefer gog for Gmail accounts since it adds send, labels, and drafts. Use this IMAP skill for non-Gmail providers (Yahoo, Outlook, iCloud, etc.), for cross-account digest marking, or when read-only access is intentional.
 
 ## Notes
 
