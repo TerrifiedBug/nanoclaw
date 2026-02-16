@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { ASSISTANT_NAME, DATA_DIR, STORE_DIR } from './config.js';
+import { logger } from './logger.js';
 import { NewMessage, RegisteredGroup, ScheduledTask, TaskRunLog } from './types.js';
 
 let db: Database.Database;
@@ -27,6 +28,7 @@ function createSchema(database: Database.Database): void {
       FOREIGN KEY (chat_jid) REFERENCES chats(jid)
     );
     CREATE INDEX IF NOT EXISTS idx_timestamp ON messages(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_chat_timestamp ON messages(chat_jid, timestamp);
 
     CREATE TABLE IF NOT EXISTS scheduled_tasks (
       id TEXT PRIMARY KEY,
@@ -123,17 +125,59 @@ export function initDatabase(): void {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
   db = new Database(dbPath);
+  db.pragma('journal_mode = WAL');
   createSchema(db);
 
   // Migrate from JSON files if they exist
   migrateJsonState();
 
+  // Create a backup on startup
+  backupDatabase();
+
+  // Prune old task run logs
+  const pruned = pruneTaskRunLogs();
+  if (pruned > 0) {
+    logger.info({ pruned }, 'Pruned old task run logs');
+  }
 }
 
 /** @internal - for tests only. Creates a fresh in-memory database. */
 export function _initTestDatabase(): void {
   db = new Database(':memory:');
   createSchema(db);
+}
+
+/**
+ * Create a backup of the database. Uses SQLite's online backup API
+ * which is safe to call while the database is in use.
+ * Keeps the two most recent backups and removes older ones.
+ */
+export function backupDatabase(): void {
+  try {
+    const dbPath = path.join(STORE_DIR, 'messages.db');
+    const backupDir = path.join(STORE_DIR, 'backups');
+    fs.mkdirSync(backupDir, { recursive: true });
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupPath = path.join(backupDir, `messages-${timestamp}.db`);
+
+    db.backup(backupPath).then(() => {
+      logger.info({ backupPath }, 'Database backup completed');
+
+      // Keep only the 2 most recent backups
+      const backups = fs.readdirSync(backupDir)
+        .filter((f) => f.startsWith('messages-') && f.endsWith('.db'))
+        .sort()
+        .reverse();
+      for (const old of backups.slice(2)) {
+        fs.unlinkSync(path.join(backupDir, old));
+      }
+    }).catch((err) => {
+      logger.error({ err }, 'Database backup failed');
+    });
+  } catch (err) {
+    logger.error({ err }, 'Database backup failed');
+  }
 }
 
 /**
@@ -485,6 +529,14 @@ export function logTaskRun(log: TaskRunLog): void {
     log.result,
     log.error,
   );
+}
+
+/** Delete task_run_logs older than the given number of days. */
+export function pruneTaskRunLogs(olderThanDays = 30): number {
+  const result = db.prepare(
+    `DELETE FROM task_run_logs WHERE run_at < datetime('now', ?)`,
+  ).run(`-${olderThanDays} days`);
+  return result.changes;
 }
 
 // --- Router state accessors ---

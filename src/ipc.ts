@@ -359,6 +359,14 @@ export async function processTaskIpc(
         break;
       }
       if (data.jid && data.name && data.folder && data.trigger) {
+        // Validate folder name to prevent path traversal
+        if (/[\/\\]|\.\./.test(data.folder)) {
+          logger.warn(
+            { folder: data.folder },
+            'Rejected register_group with invalid folder name (path traversal attempt)',
+          );
+          break;
+        }
         deps.registerGroup(data.jid, {
           name: data.name,
           folder: data.folder,

@@ -134,7 +134,9 @@ function buildVolumeMounts(
   if (pluginRegistry) {
     const mergedMcp = pluginRegistry.getMergedMcpConfig(mcpJsonFile, scopeChannel, scopeGroup);
     if (Object.keys(mergedMcp.mcpServers).length > 0) {
-      const mergedMcpPath = path.join(DATA_DIR, 'merged-mcp.json');
+      const mergedMcpDir = path.join(DATA_DIR, 'env', group.folder);
+      fs.mkdirSync(mergedMcpDir, { recursive: true });
+      const mergedMcpPath = path.join(mergedMcpDir, 'merged-mcp.json');
       fs.writeFileSync(mergedMcpPath, JSON.stringify(mergedMcp, null, 2));
       mounts.push({
         hostPath: mergedMcpPath,
@@ -245,7 +247,8 @@ function buildVolumeMounts(
 
   // Environment file directory (workaround for Apple Container -i env var bug)
   // Only expose specific auth variables needed by Claude Code, not the entire .env
-  const envDir = path.join(DATA_DIR, 'env');
+  // Per-group directory prevents race conditions during concurrent container spawns
+  const envDir = path.join(DATA_DIR, 'env', group.folder);
   fs.mkdirSync(envDir, { recursive: true });
   const envFile = path.join(projectRoot, '.env');
   if (fs.existsSync(envFile)) {
