@@ -207,9 +207,12 @@ class {Name}Channel {
     // Call this.#config.onChatMetadata() for chat discovery
   }
 
-  async sendMessage(jid, text) {
+  async sendMessage(jid, text, sender) {
     // Send message to the platform
     // Extract platform-native ID from JID: jid.replace(/^{prefix}:/, '')
+    // Optional: if sender is provided and the platform supports per-sender
+    // identities (e.g. webhook display names, bot pools), use it to send
+    // from a distinct identity. Channels that don't support this can ignore it.
   }
 
   isConnected() {
@@ -412,11 +415,11 @@ To remove the {Platform} channel:
 - **Auth**: QR code scan or pairing code via `auth.js`
 - **Special**: Prefixes bot name (shared phone number), LID translation, media download
 
-### Telegram (via add-telegram skill, not yet a standalone plugin)
+### Telegram (`plugins/channels/telegram/`)
 - **JID format**: `tg:{chat_id}` (positive for DMs, negative for groups)
 - **Library**: `grammy`
 - **Auth**: Bot token from BotFather (simple env var)
-- **Special**: @mention translation to trigger pattern, `/chatid` command
+- **Special**: @mention translation to trigger pattern, `/chatid` command, built-in swarm bot pool via `sender` parameter
 
 ## Plugin System Reference
 
@@ -425,4 +428,4 @@ To remove the {Platform} channel:
 - Data storage goes in `data/channels/{name}/`
 - The `onChannel(ctx, config)` hook receives a `PluginContext` (logger, insertMessage, sendMessage, getRegisteredGroups, getMainChannelJid) and `ChannelPluginConfig` (onMessage, onChatMetadata, registeredGroups, paths, assistantName, assistantHasOwnNumber, db)
 - Channels are initialized before other plugin hooks (`onStartup`)
-- The `Channel` interface: `name`, `connect()`, `sendMessage(jid, text)`, `isConnected()`, `ownsJid(jid)`, `disconnect()`, optional `refreshMetadata()`, optional `listAvailableGroups()`
+- The `Channel` interface: `name`, `connect()`, `sendMessage(jid, text, sender?)`, `isConnected()`, `ownsJid(jid)`, `disconnect()`, optional `refreshMetadata()`, optional `listAvailableGroups()`. The `sender` parameter carries the subagent's identity name — channels that support per-sender identities (bot pools, webhooks) can use it; others ignore it.

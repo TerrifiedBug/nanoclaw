@@ -41,16 +41,30 @@ Regular plugins add tools, container hooks, or env vars. Channel plugins are dif
 ### Directory Layout
 
 ```
-plugins/
-  channels/
-    whatsapp/                  # channel plugin code (version-controlled)
-      plugin.json              # manifest: channelPlugin: true
-      index.js                 # exports onChannel hook
-      auth.js                  # standalone auth helper script
-    telegram/                  # future channel (same pattern)
+.claude/skills/channels/
+  whatsapp/                    # channel skill (version-controlled templates)
+    SKILL.md                   # auth docs, troubleshooting
+    files/                     # template files (copied on install)
       plugin.json
       index.js
       auth.js
+      package.json
+  telegram/                    # same pattern for each channel
+    SKILL.md
+    files/
+      plugin.json
+      index.js
+      package.json
+
+plugins/
+  channels/                    # runtime directory (gitignored)
+    whatsapp/                  # installed channel plugin
+      plugin.json              # manifest: channelPlugin: true
+      index.js                 # exports onChannel hook
+      auth.js                  # standalone auth helper script
+    telegram/                  # installed from templates by /add-telegram
+      plugin.json
+      index.js
 
 data/
   channels/
@@ -61,7 +75,7 @@ data/
     telegram/                  # each channel gets its own data dir
 ```
 
-Plugin code lives under `plugins/channels/{name}/`. Runtime data (auth credentials, caches) lives under `data/channels/{name}/`. This separation means code can be version-controlled while credentials stay local and gitignored.
+Channel plugin **templates** live under `.claude/skills/channels/{name}/files/`. When a user runs `/add-{name}`, the skill copies templates into `plugins/channels/{name}/` and runs `npm install`. The entire `plugins/channels/` directory is gitignored — only the skill templates are version-controlled. Runtime data (auth credentials, caches) lives under `data/channels/{name}/`.
 
 ### Plugin Discovery
 
@@ -100,7 +114,7 @@ The order matters: channels connect before other plugins start, so plugins like 
 | `src/types.ts` | `Channel` interface, `NewMessage`, `OnInboundMessage`, `OnChatMetadata` |
 | `src/plugin-types.ts` | `PluginManifest`, `ChannelPluginConfig`, `PluginContext`, `PluginHooks` |
 | `src/plugin-loader.ts` | Discovery, loading, `PluginRegistry` with scoping methods |
-| `src/router.ts` | `routeOutbound()` — dispatches to correct channel by JID |
+| `src/router.ts` | `routeOutbound()` — dispatches to correct channel by JID, forwards optional `sender` |
 | `src/index.ts` | Orchestrator: channel init loop (lines ~490–520), message polling |
 | `src/container-runner.ts` | Scoped plugin injection per channel/group |
 | `src/db.ts` | `channel` column migration on `registered_groups` |
@@ -116,7 +130,7 @@ Every channel plugin must return an object implementing this interface (defined 
 interface Channel {
   name: string;
   connect(): Promise<void>;
-  sendMessage(jid: string, text: string): Promise<void>;
+  sendMessage(jid: string, text: string, sender?: string): Promise<void>;
   isConnected(): boolean;
   ownsJid(jid: string): boolean;
   disconnect(): Promise<void>;
@@ -129,7 +143,7 @@ interface Channel {
 |--------|----------|-------------|
 | `name` | Yes | Unique channel identifier (e.g. `"whatsapp"`, `"telegram"`). Must match the plugin directory name. |
 | `connect()` | Yes | Establish the network connection. Should resolve when the channel is ready to send/receive messages. |
-| `sendMessage(jid, text)` | Yes | Deliver a text message to the given JID. Must handle internal queuing if temporarily disconnected. |
+| `sendMessage(jid, text, sender?)` | Yes | Deliver a text message to the given JID. Must handle internal queuing if temporarily disconnected. The optional `sender` parameter carries the subagent's role/identity name (e.g. `"Researcher"`) — channels that support per-sender identities (e.g. Telegram bot pool, Discord webhooks) can use it to send from a distinct bot identity. Channels that don't support this can ignore the parameter. |
 | `isConnected()` | Yes | Return `true` if the channel can currently send messages. |
 | `ownsJid(jid)` | Yes | Return `true` if this channel is responsible for routing to the given JID. Must be non-overlapping across all channels. |
 | `disconnect()` | Yes | Graceful shutdown. Called on SIGTERM/SIGINT. |
@@ -332,10 +346,10 @@ Each channel must claim a non-overlapping set of JID patterns. The `ownsJid(jid)
 | Channel | Group JID | DM JID | `ownsJid` implementation |
 |---------|-----------|--------|--------------------------|
 | WhatsApp | `{id}@g.us` | `{number}@s.whatsapp.net` | `jid.endsWith('@g.us') \|\| jid.endsWith('@s.whatsapp.net')` |
-| Telegram | `telegram:{chatId}` | `telegram:{chatId}` | `jid.startsWith('telegram:')` |
-| Discord | `discord:{channelId}` | `discord:{userId}` | `jid.startsWith('discord:')` |
+| Telegram | `tg:{chatId}` | `tg:{chatId}` | `jid.startsWith('tg:')` |
+| Discord | `dc:{channelId}` | `dc:{userId}` | `jid.startsWith('dc:')` |
 
-Telegram and Discord formats above are proposals — the only hard requirement is that JID patterns **must not overlap** between channels. If two channels both claim a JID, routing behaviour is undefined.
+The only hard requirement is that JID patterns **must not overlap** between channels. If two channels both claim a JID, routing behaviour is undefined.
 
 When a group is registered, the `channel` field in the database records which channel owns it (see [Database](#database)).
 
@@ -364,11 +378,12 @@ Platform network (WhatsApp/Telegram/etc.)
 
 ```
 Agent container writes response
-  → IPC watcher reads output file
-  → routeOutbound(channels, jid, text)
+  → IPC watcher reads output file (including optional sender field)
+  → routeOutbound(channels, jid, text, sender?)
     → channels.find(c => c.ownsJid(jid) && c.isConnected())
-    → channel.sendMessage(jid, text)
+    → channel.sendMessage(jid, text, sender?)
       → platform SDK delivers message to network
+      → if sender is set and channel supports it: sends from alternate identity
 ```
 
 If no connected channel owns the JID, `routeOutbound` logs a warning and returns `false`. The message is dropped.

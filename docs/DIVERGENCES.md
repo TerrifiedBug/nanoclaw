@@ -18,6 +18,7 @@ This document tracks all legitimate divergences between our fork's `main` branch
 | SECURITY | Security hardening (secret isolation, prompt injection, path blocking) |
 | ~~ASSISTANT_NAME~~ | ~~Configurable assistant name~~ — **collapsed: merged via PR #235** |
 | TASK | Scheduled task improvements (model selection, error notifications) |
+| TELEGRAM | Telegram core channel plugin with swarm pool |
 | MEDIA | Media download pipeline (image/video/audio/document) |
 | OTHER | Minor improvements (read receipts, DRY refactors) |
 
@@ -25,16 +26,17 @@ This document tracks all legitimate divergences between our fork's `main` branch
 
 | File | Status | Categories | Summary |
 |------|--------|------------|---------|
-| `src/index.ts` | Modified | PLUGIN, DOCKER, BUGFIX, TASK | Plugin lifecycle, per-group triggers, consecutive error tracking, message dedup, heartbeat typing |
+| `src/index.ts` | Modified | PLUGIN, DOCKER, BUGFIX, TASK, TELEGRAM | Plugin lifecycle, per-group triggers, consecutive error tracking, message dedup, heartbeat typing, sender forwarding in IPC watcher |
 | `src/config.ts` | Modified | TASK, PLUGIN | `SCHEDULED_TASK_IDLE_TIMEOUT`, `createTriggerPattern()` |
 | `src/container-runner.ts` | Modified | PLUGIN, DOCKER, SECURITY, TASK, BUGFIX | Plugin mounts/hooks/MCP merge, runtime abstraction, env file quoting, OAuth sync |
 | `src/container-runtime.ts` | **New** | DOCKER | Runtime abstraction (Docker vs Apple Container), orphan cleanup, mount permissions |
 | `src/db.ts` | Modified | BUGFIX, TASK, PLUGIN | `>=` timestamp fix, `insertExternalMessage()`, `claimTask()`, model column, channel column (no backfill) |
-| `src/ipc.ts` | Modified | TASK | Model field |
+| `src/ipc.ts` | Modified | TASK, TELEGRAM | Model field, `sender` param on `IpcDeps.sendMessage`, reads `data.sender` from IPC JSON |
 | `src/plugin-loader.ts` | **New** | PLUGIN | Plugin discovery, manifest parsing, env var collection, MCP merging, hook lifecycle |
 | `src/plugin-types.ts` | **New** | PLUGIN | TypeScript interfaces for plugin system (includes version fields) |
 | `src/task-scheduler.ts` | Modified | TASK, BUGFIX | `claimTask()`, shorter idle timeout, model selection, error notifications |
-| `src/types.ts` | Modified | MEDIA, TASK, PLUGIN | Media fields (`mediaType`, `mediaPath`, `mediaHostPath`), model, async `OnInboundMessage` |
+| `src/types.ts` | Modified | MEDIA, TASK, PLUGIN, TELEGRAM | Media fields (`mediaType`, `mediaPath`, `mediaHostPath`), model, async `OnInboundMessage`, `sender` param on `Channel.sendMessage` |
+| `src/router.ts` | Modified | TELEGRAM | `sender` param threaded through `routeOutbound()` |
 | `src/channels/whatsapp.ts` | Modified | MEDIA, OTHER | Media download (returns `hostPath` for host-side plugin hooks), read receipts |
 
 ## Tests
@@ -65,14 +67,14 @@ This document tracks all legitimate divergences between our fork's `main` branch
 | File | Status | Categories | Summary |
 |------|--------|------------|---------|
 | `.dockerignore` | **New** | OTHER | Excludes non-build dirs from Docker context |
-| `.gitignore` | Modified | PLUGIN, OTHER | `plugins/*` and `!plugins/.gitkeep`; removed docs/plans/, added .mcp.json |
+| `.gitignore` | Modified | PLUGIN, OTHER | `plugins/*` and `!plugins/.gitkeep`; channel plugins gitignored (templates-only); removed docs/plans/, added .mcp.json |
 | `plugins/.gitkeep` | **New** | PLUGIN | Tracks empty plugins directory |
 | `CLAUDE.md` | Modified | SECURITY | Added security section referencing `docs/SECURITY.md` |
 | `groups/global/CLAUDE.md` | Modified | OTHER | References `$ASSISTANT_NAME` env var (upstream still hardcodes "Andy") |
 | `groups/main/CLAUDE.md` | Modified | SECURITY, OTHER | Anti-prompt-injection rules, `$ASSISTANT_NAME` env var, generic example triggers |
 | `docs/DIVERGENCES.md` | **New** | OTHER | This file — fork divergence tracking |
 | `docs/PLUGINS.md` | Modified | PLUGIN | Added Dockerfile.partial documentation section |
-| `docs/CHANNEL_PLUGINS.md` | Modified | PLUGIN | Removed outdated WhatsApp backfill reference |
+| `docs/CHANNEL_PLUGINS.md` | Modified | PLUGIN | Templates-only architecture (no committed channel plugins), `sender` param docs, JID prefix standardisation |
 | `package.json` | Modified | PLUGIN | Channel SDK deps removed (moved to per-plugin packages) |
 | `package-lock.json` | Modified | OTHER | Platform-specific (Linux vs macOS optional deps) |
 | `.mcp.json` | Untracked | OTHER | Gitignored — modified by skill installations |
@@ -109,12 +111,20 @@ This document tracks all legitimate divergences between our fork's `main` branch
 | `add-weather` | Weather via wttr.in / Open-Meteo |
 | `add-webhook` | HTTP webhook endpoint for push events |
 | `add-whatsapp` | Add WhatsApp as a channel plugin |
+| `channels/telegram` | Telegram channel auth, setup, and troubleshooting reference |
 | `set-model` | Change Claude model for containers |
 | `update-nanoclaw` | Upstream sync management |
 
-### Unchanged from upstream (5)
+### Unchanged from upstream (3)
 
-`add-gmail`, `add-parallel`, `add-telegram-swarm`, `add-telegram`, `x-integration`
+`add-gmail`, `add-parallel`, `x-integration`
+
+### Rewritten for plugin architecture (2)
+
+| Skill | Categories | Summary |
+|-------|------------|---------|
+| `add-telegram` | TELEGRAM, PLUGIN | Rewritten from inline implementation to install-and-auth pattern (copies plugin from skill templates, points to channel docs) |
+| `add-telegram-swarm` | TELEGRAM, PLUGIN | Rewritten from code-modification to config-only (set env var, add CLAUDE.md instructions, restart) |
 
 ### Superseded by our architecture (1)
 
@@ -172,7 +182,7 @@ Collapsed divergences: `src/env.ts`, `src/db.ts` is_bot_message, `src/config.ts`
 
 ### After all pending PRs merge
 
-**What remains ours:** PLUGIN, DOCKER, MEDIA, TASK (model selection, error notifications), SECURITY (hooks), and fork-only BUGFIX items (env file quoting — only exists in our env mount code).
+**What remains ours:** PLUGIN, DOCKER, MEDIA, TELEGRAM, TASK (model selection, error notifications), SECURITY (hooks), and fork-only BUGFIX items (env file quoting — only exists in our env mount code).
 
 ### Assessed but not PR-able
 
@@ -186,6 +196,8 @@ Collapsed divergences: `src/env.ts`, `src/db.ts` is_bot_message, `src/config.ts`
 | Heartbeat typing indicator | Enhancement |
 | Read receipts | Enhancement |
 | Security hooks (`security-hooks.ts`) | New capability (complementary to upstream's trust model) |
+| Telegram core channel plugin | Feature — upstream has no Telegram support; includes swarm bot pool |
+| `sender` threading (`types.ts`, `router.ts`, `ipc.ts`, `index.ts`) | Enables channel-level sender routing (swarm pool, future per-sender features) |
 | Env file quoting | Only applies to our fork's env mount mechanism |
 | Setup skill (scripted steps) | Upstream PR #258 hardcodes WhatsApp; our plugin architecture needs channel-agnostic scripts |
 | Per-group webhook routing | Enhancement — upstream uses single global webhook secret |
