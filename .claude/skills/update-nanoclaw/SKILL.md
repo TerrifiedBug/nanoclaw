@@ -3,6 +3,8 @@ name: update-nanoclaw
 description: Efficiently bring upstream NanoClaw updates into a customized install, with preview, selective cherry-pick, and low token usage.
 ---
 
+> **Future goal:** As NanoClaw's upstream adopts the plugin architecture, customizations will live entirely in `plugins/`, `groups/`, `.claude/skills/`, and `.env` — all gitignored. When that's achieved, upstream updates become a simple `git pull` with zero conflicts. Until then, this skill provides safe merge/cherry-pick/rebase options.
+
 # About
 
 Your NanoClaw fork drifts from upstream as you customize it. This skill pulls upstream changes into your install without losing your modifications.
@@ -49,6 +51,18 @@ Only opens files with actual conflicts. Uses `git log`, `git diff`, and `git sta
 
 # Goal
 Help a user with a customized NanoClaw install safely incorporate upstream changes without a fresh reinstall and without blowing tokens.
+
+# Quick Update (try first)
+
+For installs where customizations live in gitignored directories:
+
+```bash
+git fetch upstream
+git merge upstream/$UPSTREAM_BRANCH --no-edit
+npm run build
+```
+
+If the merge succeeds cleanly, skip directly to Step 5 (Validation). If conflicts arise, proceed to the detailed flow below.
 
 # Operating principles
 - Never proceed with a dirty working tree.
