@@ -11,6 +11,7 @@ import makeWASocket, {
 } from '@whiskeysockets/baileys';
 
 const GROUP_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const MAX_OUTGOING_QUEUE = 200;
 
 class WhatsAppChannel {
   name = 'whatsapp';
@@ -168,7 +169,8 @@ class WhatsAppChannel {
             msg.message?.imageMessage?.caption ||
             msg.message?.videoMessage?.caption ||
             '';
-          const sender = msg.key.participant || msg.key.remoteJid || '';
+          const rawSender = msg.key.participant || msg.key.remoteJid || '';
+          const sender = await this.translateJid(rawSender);
           const senderName = msg.pushName || sender.split('@')[0];
 
           const fromMe = msg.key.fromMe || false;
@@ -239,6 +241,10 @@ class WhatsAppChannel {
       : `${this.config.assistantName}: ${text}`;
 
     if (!this.connected) {
+      if (this.outgoingQueue.length >= MAX_OUTGOING_QUEUE) {
+        const dropped = this.outgoingQueue.shift();
+        this.logger.warn({ jid: dropped.jid, queueSize: this.outgoingQueue.length }, 'Outgoing queue full, dropped oldest message');
+      }
       this.outgoingQueue.push({ jid, text: prefixed });
       this.logger.info({ jid, length: prefixed.length, queueSize: this.outgoingQueue.length }, 'WA disconnected, message queued');
       return;
@@ -406,9 +412,9 @@ class WhatsAppChannel {
     try {
       this.logger.info({ count: this.outgoingQueue.length }, 'Flushing outgoing message queue');
       while (this.outgoingQueue.length > 0) {
-        const item = this.outgoingQueue.shift();
-        // Send directly - queued items are already prefixed by sendMessage
+        const item = this.outgoingQueue[0];
         await this.sock.sendMessage(item.jid, { text: item.text });
+        this.outgoingQueue.shift();
         this.logger.info({ jid: item.jid, length: item.text.length }, 'Queued message sent');
       }
     } finally {
