@@ -14,12 +14,11 @@ A skill plugin adds an integration (calendar, weather, search, home automation, 
 
 **How to contribute a skill plugin:**
 
-1. Run `/create-skill-plugin` on a fresh clone to scaffold your plugin
-2. Your plugin needs a `plugin.json` manifest defining hooks, `containerEnvVars`, and optional `Dockerfile.partial`
-3. Create an installation skill in `.claude/skills/add-skill-{name}/SKILL.md` that guides users through setup
-4. Test by running the installation skill on a fresh clone
+1. Run `/create-skill-plugin` on a fresh clone — it scaffolds everything: `plugin.json`, hook files, container skills, and an installation skill in `.claude/skills/add-skill-{name}/`
+2. Test by running the generated installation skill on a fresh clone
+3. Submit a PR containing the `.claude/skills/add-skill-{name}/` directory
 
-A PR that contributes a skill plugin should include the installation skill in `.claude/skills/` and optionally the plugin code in `plugins/`. Since `plugins/` is gitignored, the installation skill is what actually gets distributed — it teaches Claude Code how to create and configure the plugin.
+The PR only contains the installation skill and its `files/` subdirectory (the plugin template). The `plugins/` directory is gitignored — when a user runs `/add-skill-{name}`, the skill copies the template files into `plugins/` on their fork.
 
 ## 3. Channel Plugins
 
@@ -27,16 +26,17 @@ A channel plugin connects NanoClaw to a messaging platform (Telegram, Slack, SMS
 
 **How to contribute a channel plugin:**
 
-1. Run `/create-channel-plugin` on a fresh clone to scaffold your plugin
-2. Implement the Channel interface: `connect()`, `disconnect()`, message storage, authentication
-3. Create an installation skill in `.claude/skills/add-channel-{name}/SKILL.md`
-4. Test by running the installation skill on a fresh clone
+1. Run `/create-channel-plugin` on a fresh clone — it scaffolds the channel implementation and an installation skill in `.claude/skills/add-channel-{name}/`
+2. Test by running the generated installation skill on a fresh clone
+3. Submit a PR containing the `.claude/skills/add-channel-{name}/` directory
 
-See existing channel installation skills (e.g., `.claude/skills/add-channel-telegram/`, `.claude/skills/add-channel-discord/`) for reference.
+Same as skill plugins — the PR only contains the skill directory. The plugin code lives in `.claude/skills/add-channel-{name}/files/` and gets copied to `plugins/channels/{name}/` when a user runs the installation skill.
+
+See existing channel skills (e.g., `.claude/skills/add-channel-telegram/`, `.claude/skills/add-channel-discord/`) for reference.
 
 ## Plugin Structure
 
-Every plugin lives in `plugins/` and has a `plugin.json` manifest:
+At runtime, every plugin lives in `plugins/` and has a `plugin.json` manifest. In the repo, the plugin template lives in `.claude/skills/add-{type}-{name}/files/` and gets copied to `plugins/` when the installation skill runs.
 
 ```json
 {
