@@ -1,7 +1,7 @@
 ---
 name: commute
 description: Check travel time and distance between locations using Waze live traffic data. Use for commute times, journey planning, or whenever someone asks how long it takes to get somewhere.
-allowed-tools: Bash(curl:*,jq:*)
+allowed-tools: Bash(curl:*,jq:*,sed:*,python3:*)
 ---
 
 # Travel Time with Waze
@@ -12,12 +12,16 @@ Get live traffic-based travel times using the Waze routing API (no API key neede
 
 ### Step 1: Geocode addresses to coordinates
 
+The geocoding endpoint **requires** `lat` and `lon` parameters (approximate location bias). Without them it returns 500. Use `0`/`0` if you have no idea, or the approximate region center for better results.
+
 ```bash
 # Geocode an address (use row-SearchServer for EU/UK/AU, SearchServer for US)
 curl -s -G "https://www.waze.com/row-SearchServer/mozi" \
   --data-urlencode "q=Oxford, UK" \
   --data-urlencode "lang=eng" \
   --data-urlencode "origin=livemap" \
+  --data-urlencode "lat=51.5" \
+  --data-urlencode "lon=-0.1" \
   -H "User-Agent: Mozilla/5.0" \
   -H "Referer: https://www.waze.com/" | jq '.[0] | {name, lat: .location.lat, lon: .location.lon}'
 ```
@@ -37,13 +41,21 @@ curl -s -G "https://routing-livemap-row.waze.com/RoutingManager/routingRequest" 
   --data-urlencode "nPaths=3" \
   --data-urlencode "options=AVOID_TRAILS:t,AVOID_TOLL_ROADS:f,AVOID_FERRIES:f" \
   -H "User-Agent: Mozilla/5.0" \
-  -H "Referer: https://www.waze.com/" | jq '{
-    routes: [.alternatives[] | {
-      name: .response.routeName,
-      time_minutes: ([.response.results[].crossTime] | add / 60 | . * 100 | round / 100),
-      distance_km: ([.response.results[].length] | add / 1000 | . * 100 | round / 100)
-    }]
-  }'
+  -H "Referer: https://www.waze.com/" | jq '
+    # nPaths>1 returns {alternatives: [...]}, nPaths=1 returns {response: ...}
+    if .alternatives then
+      {routes: [.alternatives[] | {
+        name: .response.routeName,
+        time_minutes: ([.response.results[].crossTime] | add / 60 | . * 100 | round / 100),
+        distance_km: ([.response.results[].length] | add / 1000 | . * 100 | round / 100)
+      }]}
+    else
+      {routes: [{
+        name: .response.routeName,
+        time_minutes: ([.response.results[].crossTime] | add / 60 | . * 100 | round / 100),
+        distance_km: ([.response.results[].length] | add / 1000 | . * 100 | round / 100)
+      }]}
+    end'
 ```
 
 ## Regional Servers
@@ -59,23 +71,29 @@ Default to EU/UK servers unless the user's location suggests otherwise.
 ## Route Options
 
 Add to the `options` parameter:
-- `AVOID_TOLL_ROADS:t` — avoid tolls
-- `AVOID_FERRIES:t` — avoid ferries
-- `AVOID_TRAILS:t` — avoid unpaved roads
+- `AVOID_TOLL_ROADS:t` -- avoid tolls
+- `AVOID_FERRIES:t` -- avoid ferries
+- `AVOID_TRAILS:t` -- avoid unpaved roads
 
 ## Response Parsing
 
-The routing response contains `alternatives[]`, each with `response.results[]` segments:
-- `crossTime` — travel time for segment (seconds, includes live traffic)
-- `crossTimeWithoutRealTime` — average time without live traffic
-- `length` — segment distance (meters)
+**Routing response structure varies by nPaths:**
+- `nPaths=1` returns `{response: {results: [...], routeName: "...", totalRouteTime: N}}`
+- `nPaths>1` returns `{alternatives: [{response: {...}}, ...]}`
 
-Sum all segments for total time/distance.
+Each `response.results[]` segment has:
+- `crossTime` -- travel time for segment (seconds, includes live traffic)
+- `crossTimeWithoutRealTime` -- average time without live traffic
+- `length` -- segment distance (meters)
+- `totalRouteTime` -- pre-summed total time (seconds) on the response object
+
+Sum all segments for total time/distance, or use `totalRouteTime` directly.
 
 ## Important Notes
 
 - **Headers required**: Always include `User-Agent` and `Referer` headers or requests will be blocked
-- **NaN values**: Response JSON may contain bare `NaN` values. Pipe through `sed 's/NaN/"NaN"/g'` before `jq` if parsing fails
+- **lat/lon required for geocoding**: The search endpoint returns 500 without `lat` and `lon` query params. Pass approximate coordinates for the region (e.g., `lat=51.5&lon=-0.1` for UK)
+- **NaN values**: Response JSON may contain `NaN` values (currently quoted as `"NaN"` strings). If jq parsing fails, try piping through `sed 's/: *NaN/: "NaN"/g'` before `jq` to fix bare NaN values
 - **Coordinates format**: Waze uses `x:longitude y:latitude` (note: longitude first!)
 - **nPaths**: Set to 3 to show alternative routes with different times
 

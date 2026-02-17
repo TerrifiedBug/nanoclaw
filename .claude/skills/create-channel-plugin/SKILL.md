@@ -74,6 +74,8 @@ Before generating:
 
 4. **Generate all files**
 
+   **Important:** The generated SKILL.md MUST include the Preflight section. This is mandatory for all installation skills.
+
 5. **Next step — make this prominent and unmissable:**
 
    > **Your `{name}` channel plugin is ready! To install it, run `/add-channel-{name}`.**
@@ -111,13 +113,14 @@ Before generating:
 ### MUST NOT modify:
 
 - `src/` — no TypeScript source changes
-- `container/` — no Docker image changes
+- `container/Dockerfile` or `container/agent-runner/` — no direct Docker image changes (use `Dockerfile.partial` instead for container-level dependencies)
 - Root `package.json` or `package-lock.json` — channel deps go in per-plugin packages
 - Existing plugins — no cross-plugin modifications
 
 ### CAN create/modify:
 
 - `plugins/channels/{name}/` — the channel plugin being generated
+- `plugins/channels/{name}/Dockerfile.partial` — optional, for system packages or CLI tools needed inside the container
 - `.claude/skills/add-channel-{name}/` — the installation skill
 - `.env` — adding environment variables, with user confirmation only
 
@@ -125,7 +128,7 @@ Before generating:
 
 - If the platform requires core code changes: "This would need changes to NanoClaw's core code. You could use `/nanoclaw-customize` for that."
 - If npm dependencies needed: document as prerequisite in the installation skill
-- If container image changes needed (system packages): document as manual step
+- If container image changes needed (system packages): use `Dockerfile.partial` in the plugin directory — it's automatically merged during `container/build.sh`
 
 ## Output Structure
 
@@ -137,8 +140,7 @@ This is both the **user-facing entry point** (shows up as `/add-channel-{name}` 
 
 ```
 .claude/skills/add-channel-{name}/
-├── SKILL.md                        # Installation skill (name: add-channel-{name})
-├── CHANNEL.md                      # Channel reference (auth details, platform docs)
+├── SKILL.md                        # Installation skill with auth details (name: add-channel-{name})
 └── files/                          # Template channel plugin (copied on install)
     ├── plugin.json                 # Manifest (always present)
     ├── index.js                    # Channel implementation (always present)
@@ -150,6 +152,28 @@ The `add-channel-{name}` SKILL.md must:
 - Include the full installation flow: npm install, copy plugin files, collect credentials, restart
 - Reference the channel files with: `cp -r .claude/skills/add-channel-{name}/files/* plugins/channels/{name}/`
 - Include registration and verification steps
+
+### Dockerfile.partial (Optional)
+
+If the channel requires system packages or CLI tools inside the agent container, create a `Dockerfile.partial` in the plugin's `files/` directory. This file is automatically merged into the container image by `container/build.sh` during rebuild.
+
+```dockerfile
+# Example: install a system dependency
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends some-package && rm -rf /var/lib/apt/lists/*
+USER node
+```
+
+The build script scans `plugins/*/Dockerfile.partial` and `plugins/*/*/Dockerfile.partial`, inserting their contents before the final `USER node` line. Build context is the project root, so COPY paths are relative to the NanoClaw directory.
+
+When to use:
+- The channel library requires native binaries (e.g., `sharp` for image processing)
+- Auth flow needs system tools (e.g., `expect` for interactive prompts)
+- Media handling requires codecs or converters
+
+When NOT to use:
+- Pure npm dependencies — use per-plugin `package.json` instead
+- Environment variables — use `.env` and `containerEnvVars`
 
 ## Channel Plugin Templates
 
@@ -315,6 +339,18 @@ description: Add {Platform} as a messaging channel. Triggers on "add {name}", "{
 # Add {Platform} Channel
 
 Adds {Platform} as a messaging channel to NanoClaw.
+
+## Preflight
+
+Before installing, verify NanoClaw is set up:
+
+\`\`\`bash
+[ -d node_modules ] && echo "DEPS: ok" || echo "DEPS: missing"
+docker image inspect nanoclaw-agent:latest &>/dev/null && echo "IMAGE: ok" || echo "IMAGE: not built"
+grep -q "ANTHROPIC_API_KEY\|CLAUDE_CODE_OAUTH_TOKEN" .env 2>/dev/null && echo "AUTH: ok" || echo "AUTH: missing"
+\`\`\`
+
+If any check fails, tell the user to run `/nanoclaw-setup` first and stop.
 
 ## Prerequisites
 

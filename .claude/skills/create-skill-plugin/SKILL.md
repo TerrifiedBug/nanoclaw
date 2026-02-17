@@ -74,6 +74,8 @@ Before generating anything:
 
 4. **Generate all files** for the complete `add-skill-*` skill.
 
+   **Important:** The generated SKILL.md MUST include the Preflight section. This is mandatory for all installation skills.
+
 5. **Offer to install immediately** — "Want me to install this plugin now?"
 
 ### User-Facing Language
@@ -107,7 +109,7 @@ Hard constraints on what this skill can and cannot touch.
 ### MUST NOT modify:
 
 - `src/` — no TypeScript source changes, ever. The whole point of plugins is to extend without touching core code.
-- `container/Dockerfile` or `container/agent-runner/` — no Docker image changes
+- `container/Dockerfile` or `container/agent-runner/` — no direct Docker image changes (use `Dockerfile.partial` instead)
 - `package.json` or `package-lock.json` — no dependency changes
 - `groups/` — no agent memory changes
 - Existing plugins under `plugins/` — no cross-plugin modifications
@@ -116,6 +118,7 @@ Hard constraints on what this skill can and cannot touch.
 ### CAN create/modify:
 
 - `.claude/skills/add-skill-{name}/` — the installation skill being generated (the entire purpose of this skill)
+- `plugins/{name}/Dockerfile.partial` — optional, for system packages needed inside the container
 - `.env` — adding environment variable values, but ONLY with explicit user confirmation
 - `plugins/{name}/` — but ONLY via the `cp -r` install step when the generated add-skill-* skill is run, never directly
 
@@ -123,7 +126,7 @@ Hard constraints on what this skill can and cannot touch.
 
 - If the user's idea requires changes to NanoClaw source code — explain clearly: "This would need changes to NanoClaw's core code, which is beyond what a plugin can do. You could use `/nanoclaw-customize` for that."
 - If the idea requires npm dependencies — don't run `npm install`. Instead, document it as a manual prerequisite in the generated add-skill-* SKILL.md (like how add-channel-telegram documents `npm install grammy`).
-- If the idea requires system packages in the Docker image (e.g., ffmpeg) — document it as a manual prerequisite requiring a container rebuild.
+- If the idea requires system packages in the Docker image (e.g., ffmpeg) — generate a `Dockerfile.partial` in the plugin's `files/` directory. The generated install skill should include `./container/build.sh` as a step.
 
 ## Output Structure
 
@@ -146,6 +149,23 @@ This skill generates the following file tree:
 - **`SKILL.md`** contains the installation instructions — what runs when someone invokes `/add-skill-{name}`. It handles env vars, copying files, rebuilding, and verification.
 - Only **`plugin.json`** is always present. Everything else is included based on the plugin's needs. A simple skill-only plugin might have just `plugin.json` and a `container-skills/SKILL.md`. A complex integration might include all of the above.
 
+### Dockerfile.partial (Optional)
+
+If the plugin requires system packages or CLI tools inside the agent container (e.g., `ffmpeg` for media, `gog` for Google APIs), create a `Dockerfile.partial` in the `files/` directory. It is automatically merged into the container image by `container/build.sh`.
+
+```dockerfile
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends some-package && rm -rf /var/lib/apt/lists/*
+USER node
+```
+
+Add a rebuild step to the generated SKILL.md install instructions:
+```bash
+./container/build.sh  # Required when Dockerfile.partial is present
+```
+
+See `plugins/calendar/Dockerfile.partial` for a real example (installs `gogcli` and `cal-cli`).
+
 ## Generated SKILL.md Template
 
 This is the template for the `add-skill-*` SKILL.md that this skill produces. It follows the pattern used by existing NanoClaw installation skills. Replace all `{placeholders}` with actual values when generating a real skill.
@@ -159,6 +179,18 @@ description: {description}. Triggers on "{trigger phrases}".
 # Add {Title}
 
 {One-line description of what this adds.}
+
+## Preflight
+
+Before installing, verify NanoClaw is set up:
+
+\`\`\`bash
+[ -d node_modules ] && echo "DEPS: ok" || echo "DEPS: missing"
+docker image inspect nanoclaw-agent:latest &>/dev/null && echo "IMAGE: ok" || echo "IMAGE: not built"
+grep -q "ANTHROPIC_API_KEY\|CLAUDE_CODE_OAUTH_TOKEN" .env 2>/dev/null && echo "AUTH: ok" || echo "AUTH: missing"
+\`\`\`
+
+If any check fails, tell the user to run `/nanoclaw-setup` first and stop.
 
 ## Prerequisites
 

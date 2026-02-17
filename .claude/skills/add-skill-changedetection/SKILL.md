@@ -7,6 +7,18 @@ description: Add changedetection.io integration to NanoClaw. Enables agents to c
 
 Configures changedetection.io API access for agent containers and sets up webhook notifications so changes trigger the agent automatically.
 
+## Preflight
+
+Before installing, verify NanoClaw is set up:
+
+```bash
+[ -d node_modules ] && echo "DEPS: ok" || echo "DEPS: missing"
+docker image inspect nanoclaw-agent:latest &>/dev/null && echo "IMAGE: ok" || echo "IMAGE: not built"
+grep -q "ANTHROPIC_API_KEY\|CLAUDE_CODE_OAUTH_TOKEN" .env 2>/dev/null && echo "AUTH: ok" || echo "AUTH: missing"
+```
+
+If any check fails, tell the user to run `/nanoclaw-setup` first and stop.
+
 ## Prerequisites
 
 - A running changedetection.io instance (self-hosted)

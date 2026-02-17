@@ -13,6 +13,18 @@ Run all commands automatically. Only pause if a step fails.
 
 The claude-mem worker daemon runs on the host (port 37777) and stores observations in a SQLite + vector DB at `/root/.claude-mem/`. A socat bridge exposes it to Docker containers via 172.17.0.1:37777.
 
+## Preflight
+
+Before installing, verify NanoClaw is set up:
+
+```bash
+[ -d node_modules ] && echo "DEPS: ok" || echo "DEPS: missing"
+docker image inspect nanoclaw-agent:latest &>/dev/null && echo "IMAGE: ok" || echo "IMAGE: not built"
+grep -q "ANTHROPIC_API_KEY\|CLAUDE_CODE_OAUTH_TOKEN" .env 2>/dev/null && echo "AUTH: ok" || echo "AUTH: missing"
+```
+
+If any check fails, tell the user to run `/nanoclaw-setup` first and stop.
+
 ## Prerequisites
 
 - claude-mem plugin installed (`claude plugin add @thedotmack/claude-mem`)
@@ -159,24 +171,21 @@ systemctl start claude-mem-worker
 - **Port conflict:** `lsof -i :37777` -- kill orphaned workers first
 - **Services status:** `systemctl status claude-mem-worker claude-mem-bridge`
 
-## Remove
+## Uninstall
 
-1. Stop and disable systemd services:
+1. Stop the services:
    ```bash
-   systemctl stop claude-mem-bridge claude-mem-worker
-   systemctl disable claude-mem-bridge claude-mem-worker
-   rm /etc/systemd/system/claude-mem-worker.service /etc/systemd/system/claude-mem-bridge.service
-   systemctl daemon-reload
+   sudo systemctl stop claude-mem-bridge claude-mem-worker
+   sudo systemctl disable claude-mem-bridge claude-mem-worker
    ```
-2. `rm -rf plugins/claude-mem/`
-3. Remove env vars from `.env`:
+
+2. Remove the plugin:
    ```bash
-   sed -i '/^CLAUDE_MEM_URL=/d' .env
+   rm -rf plugins/claude-mem/
    ```
-4. Rebuild and restart.
-5. Optionally remove wrapper scripts and data:
-   ```bash
-   rm -f /root/.claude-mem/run-worker.sh /root/.claude-mem/stop-worker.sh
-   # To also remove all memory data (irreversible):
-   # rm -rf /root/.claude-mem/
-   ```
+
+3. Remove `CLAUDE_MEM_URL` from `.env`
+
+4. Rebuild and restart NanoClaw
+
+**Warning:** Do NOT delete `/root/.claude-mem/`. This directory contains the shared memory database used by both the host and container agents. Removing the plugin only stops container access — the host's claude-mem continues to function independently.

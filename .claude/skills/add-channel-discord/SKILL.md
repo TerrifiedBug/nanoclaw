@@ -12,6 +12,18 @@ This skill installs the Discord channel plugin and registers a Discord chat.
 
 **If the plugin is already installed** (check `plugins/channels/discord/`), skip to "Register a Chat" below.
 
+## Preflight
+
+Before installing, verify NanoClaw is set up:
+
+```bash
+[ -d node_modules ] && echo "DEPS: ok" || echo "DEPS: missing"
+docker image inspect nanoclaw-agent:latest &>/dev/null && echo "IMAGE: ok" || echo "IMAGE: not built"
+grep -q "ANTHROPIC_API_KEY\|CLAUDE_CODE_OAUTH_TOKEN" .env 2>/dev/null && echo "AUTH: ok" || echo "AUTH: missing"
+```
+
+If any check fails, tell the user to run `/nanoclaw-setup` first and stop.
+
 ## Prerequisites
 
 ### 1. Create a Discord Bot
@@ -26,6 +38,7 @@ Tell the user:
 > 4. Click **Reset Token** and copy the bot token
 > 5. Under **Privileged Gateway Intents**, enable:
 >    - **Message Content Intent** (required to read message text)
+>    - **Server Members Intent** (optional, for display names)
 > 6. Go to **OAuth2 > URL Generator**:
 >    - Scopes: `bot`
 >    - Bot Permissions: `Send Messages`, `Read Message History`, `View Channels`
@@ -79,6 +92,12 @@ The easiest way to get a channel ID is dynamic discovery:
    ```bash
    sqlite3 store/messages.db "SELECT jid, name FROM chats WHERE jid LIKE 'dc:%' ORDER BY last_message_time DESC LIMIT 10"
    ```
+
+**Fallback (manual method):** If you need the channel ID before the bot is running:
+   - In Discord, go to **User Settings > Advanced > Developer Mode** (enable it)
+   - Right-click the text channel (or DM conversation) you want to register
+   - Click **Copy Channel ID**
+   - Format as `dc:CHANNEL_ID` when registering
 3. Register the chat using `/nanoclaw-add-group`, or directly:
    ```bash
    sqlite3 store/messages.db "INSERT OR REPLACE INTO registered_groups (jid, name, folder, trigger_pattern, added_at, requires_trigger, channel) VALUES ('dc:CHANNEL_ID', 'GROUP_NAME', 'FOLDER_NAME', '@ASSISTANT_NAME', datetime('now'), TRIGGER_BOOL, 'discord')"

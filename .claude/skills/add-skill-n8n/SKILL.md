@@ -7,9 +7,20 @@ description: Add n8n workflow automation integration to NanoClaw. Enables agents
 
 Connects NanoClaw to an n8n instance so agents can create and manage automated workflows. Instead of burning agent tokens on frequent scheduled tasks that poll for changes, n8n does the polling (free) and only triggers the agent via webhook when something actually happens.
 
+## Preflight
+
+Before installing, verify NanoClaw is set up:
+
+```bash
+[ -d node_modules ] && echo "DEPS: ok" || echo "DEPS: missing"
+docker image inspect nanoclaw-agent:latest &>/dev/null && echo "IMAGE: ok" || echo "IMAGE: not built"
+grep -q "ANTHROPIC_API_KEY\|CLAUDE_CODE_OAUTH_TOKEN" .env 2>/dev/null && echo "AUTH: ok" || echo "AUTH: missing"
+```
+
+If any check fails, tell the user to run `/nanoclaw-setup` first and stop.
+
 ## Prerequisites
 
-- NanoClaw must be set up and running (`/nanoclaw-setup`)
 - An n8n instance with MCP server enabled (Settings > MCP Server)
 - **Optional:** The webhook plugin (`/add-skill-webhook`) -- only needed if you want n8n workflows to trigger agent turns
 

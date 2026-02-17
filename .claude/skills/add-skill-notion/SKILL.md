@@ -7,9 +7,20 @@ description: Add Notion API access to NanoClaw. Enables agents to read and updat
 
 Configures Notion API access for agent containers, enabling reading and updating Notion pages and databases.
 
+## Preflight
+
+Before installing, verify NanoClaw is set up:
+
+```bash
+[ -d node_modules ] && echo "DEPS: ok" || echo "DEPS: missing"
+docker image inspect nanoclaw-agent:latest &>/dev/null && echo "IMAGE: ok" || echo "IMAGE: not built"
+grep -q "ANTHROPIC_API_KEY\|CLAUDE_CODE_OAUTH_TOKEN" .env 2>/dev/null && echo "AUTH: ok" || echo "AUTH: missing"
+```
+
+If any check fails, tell the user to run `/nanoclaw-setup` first and stop.
+
 ## Prerequisites
 
-- NanoClaw must be set up and running (`/nanoclaw-setup`)
 - A Notion account with pages you want the agent to access
 
 ## Install
