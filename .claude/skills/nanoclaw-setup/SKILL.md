@@ -262,7 +262,7 @@ for f in plugins/channels/*/plugin.json; do
 done
 
 echo "=== AVAILABLE (not yet installed) ==="
-for s in .claude/skills/add-channel-*/CHANNEL.md; do
+for s in .claude/skills/add-channel-*/SKILL.md; do
   [ -f "$s" ] || continue
   CHANNEL_NAME=$(basename "$(dirname "$s")" | sed 's/^add-channel-//')
   # Skip if already installed
@@ -289,7 +289,7 @@ Present both installed and available channels to the user. Mark which are instal
 >
 > Which channel do you want to use for your main (admin) channel?
 
-**If user picks an uninstalled channel**: Read the channel skill at `.claude/skills/add-channel-{name}/CHANNEL.md` and follow its installation instructions. This typically involves:
+**If user picks an uninstalled channel**: Read the channel skill at `.claude/skills/add-channel-{name}/SKILL.md` and follow its installation instructions. This typically involves:
 1. Installing npm dependencies (e.g., `npm install grammy` for Telegram)
 2. Copying plugin files to `plugins/channels/{name}/` (if the skill has a `files/` directory)
 3. Collecting credentials (bot tokens, API keys) and adding them to `.env`
@@ -346,13 +346,13 @@ for i in $(seq 1 60); do STATUS=$(cat data/channels/$CHANNEL_NAME/auth-status.tx
 
 These are common channels with specific auth requirements:
 
-**WhatsApp** — Interactive auth via QR code or pairing code. The auth script supports `--serve` (HTTP QR for headless servers) and `--pairing-code --phone NUMBER` (numeric code entry). Handles error 515 reconnection automatically. See `.claude/skills/add-channel-whatsapp/CHANNEL.md` for the full QR/pairing flow details.
+**WhatsApp** — Interactive auth via QR code or pairing code. The auth script supports `--serve` (HTTP QR for headless servers) and `--pairing-code --phone NUMBER` (numeric code entry). Handles error 515 reconnection automatically. See `.claude/skills/add-channel-whatsapp/SKILL.md` for the full QR/pairing flow details.
 
 **Telegram** — Token-based. Needs `TELEGRAM_BOT_TOKEN` in `.env` (get from @BotFather). No interactive auth needed.
 
 **Discord** — Token-based. Needs `DISCORD_BOT_TOKEN` in `.env` (get from Discord Developer Portal). Enable Message Content Intent in bot settings. No interactive auth needed.
 
-For WhatsApp specifically, if you need the detailed QR/pairing code flow, read `.claude/skills/add-channel-whatsapp/CHANNEL.md` and follow its auth instructions inline.
+For WhatsApp specifically, if you need the detailed QR/pairing code flow, read `.claude/skills/add-channel-whatsapp/SKILL.md` and follow its auth instructions inline.
 
 ## 6. Configure Assistant Name and Main Channel
 

@@ -137,8 +137,7 @@ This is both the **user-facing entry point** (shows up as `/add-channel-{name}` 
 
 ```
 .claude/skills/add-channel-{name}/
-├── SKILL.md                        # Installation skill (name: add-channel-{name})
-├── CHANNEL.md                      # Channel reference (auth details, platform docs)
+├── SKILL.md                        # Installation skill with auth details (name: add-channel-{name})
 └── files/                          # Template channel plugin (copied on install)
     ├── plugin.json                 # Manifest (always present)
     ├── index.js                    # Channel implementation (always present)
