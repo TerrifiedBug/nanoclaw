@@ -193,7 +193,7 @@ export class MessageOrchestrator {
 
     // Track idle timer for closing stdin when agent is idle
     let idleTimer: ReturnType<typeof setTimeout> | null = null;
-    // Dynamic import to avoid circular dependency with config
+    // Dynamic import keeps IDLE_TIMEOUT out of OrchestratorDeps
     const { IDLE_TIMEOUT } = await import('./config.js');
 
     const resetIdleTimer = () => {

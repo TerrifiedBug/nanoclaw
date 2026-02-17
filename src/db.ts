@@ -190,6 +190,12 @@ export function _initTestDatabase(): void {
   createSchema(db);
 }
 
+/** @internal - for tests only. Runs createSchema on an existing in-memory db (for migration testing). */
+export function _initTestDatabaseFrom(database: Database.Database): void {
+  db = database;
+  createSchema(db);
+}
+
 /** @internal - for tests only. Returns the current schema version entries. */
 export function _getSchemaVersion(): Array<{ version: string; applied_at: string }> {
   return db.prepare('SELECT version, applied_at FROM schema_version ORDER BY version').all() as Array<{ version: string; applied_at: string }>;
