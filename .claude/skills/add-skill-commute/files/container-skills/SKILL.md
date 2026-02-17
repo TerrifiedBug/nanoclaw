@@ -1,7 +1,7 @@
 ---
 name: commute
 description: Check travel time and distance between locations using Waze live traffic data. Use for commute times, journey planning, or whenever someone asks how long it takes to get somewhere.
-allowed-tools: Bash(curl:*,jq:*,sed:*,python3:*)
+allowed-tools: Bash(curl:*,jq:*,sed:*)
 ---
 
 # Travel Time with Waze
