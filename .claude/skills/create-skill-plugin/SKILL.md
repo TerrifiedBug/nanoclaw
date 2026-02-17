@@ -587,8 +587,12 @@ export function register(ctx) {
 - The hook file exports a `register(ctx)` function — NOT individual event handlers
 - `register()` returns an object mapping SDK event names to arrays of hook configs
 - Each hook config is `{ hooks: [asyncFunction] }` — the nested structure is required by the SDK
-- Every hook function receives an `input` object and MUST return `{}`
-- Available SDK events: `UserPromptSubmit`, `PostToolUse`, `Stop`, `PreCompact`
+- Every hook function receives an `input` object and MUST return `{}` (empty object)
+- Available SDK events:
+  - `UserPromptSubmit` — fires when a user message is submitted. Input: `{ session_id, prompt }`
+  - `PostToolUse` — fires after each tool call completes. Input: `{ session_id, tool_name, tool_input, tool_response }`
+  - `Stop` — fires when the agent turn ends. Input: `{ session_id, stop_reason }`
+  - `PreCompact` — fires before context compaction. Input: `{ session_id }`. Use for summarization before context is trimmed
 - `ctx.env` contains the container environment variables (from `containerEnvVars` in plugin.json)
 - Use `console.error()` for logging (stdout is reserved for SDK communication)
 - Use fire-and-forget for non-critical calls; use `await` only when ordering matters (e.g., summarize before complete)
@@ -622,7 +626,9 @@ Concise technical cheat sheet for generating plugins. Complements the archetype 
   "hooks": ["string — host-side hook function names exported from index.js. Valid: onStartup, onShutdown, onInboundMessage, onChannel"],
   "containerHooks": ["string — relative paths to JS files loaded as SDK hooks inside agent containers. E.g., hooks/post-tool-use.js"],
   "containerMounts": [{"hostPath": "string", "containerPath": "string — additional read-only mounts for agent containers"}],
-  "dependencies": "boolean — set true if plugin has its own package.json/node_modules"
+  "dependencies": "boolean — set true if plugin has its own package.json/node_modules",
+  "channels": ["string — filter which channel types get this plugin. Default: [\"*\"] (all channels)"],
+  "groups": ["string — filter which group folders get this plugin's container injection. Default: [\"*\"] (all groups)"]
 }
 ```
 

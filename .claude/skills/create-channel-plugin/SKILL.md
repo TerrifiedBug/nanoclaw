@@ -273,6 +273,10 @@ export async function onChannel(ctx, config) {
      timestamp: new Date().toISOString(),
      is_from_me: false,
      is_bot_message: false,
+     // Optional media fields (for voice notes, images, documents, etc.):
+     // mediaType: 'image' | 'video' | 'audio' | 'document',
+     // mediaPath: '/workspace/group/media/xyz.ogg',       // container-relative path
+     // mediaHostPath: '/absolute/host/path/to/media/file', // host-side path (for host hooks)
    });
    ```
 
