@@ -88,24 +88,31 @@ function createSchema(database: Database.Database): void {
   runMigrations(database);
 }
 
+/** Safely add a column, ignoring "duplicate column name" errors. */
+function safeAddColumn(db: Database.Database, sql: string): void {
+  try { db.exec(sql); } catch (err: any) {
+    if (!String(err.message).includes('duplicate column')) throw err;
+  }
+}
+
 /** Ordered list of schema migrations. Each entry runs once, in order. */
 const MIGRATIONS: Array<{ name: string; up: (db: Database.Database) => void }> = [
   {
     name: '001_add_context_mode',
-    up: (db) => db.exec(`ALTER TABLE scheduled_tasks ADD COLUMN context_mode TEXT DEFAULT 'isolated'`),
+    up: (db) => safeAddColumn(db, `ALTER TABLE scheduled_tasks ADD COLUMN context_mode TEXT DEFAULT 'isolated'`),
   },
   {
     name: '002_add_model',
-    up: (db) => db.exec(`ALTER TABLE scheduled_tasks ADD COLUMN model TEXT DEFAULT 'claude-sonnet-4-5'`),
+    up: (db) => safeAddColumn(db, `ALTER TABLE scheduled_tasks ADD COLUMN model TEXT DEFAULT 'claude-sonnet-4-5'`),
   },
   {
     name: '003_add_channel',
-    up: (db) => db.exec(`ALTER TABLE registered_groups ADD COLUMN channel TEXT`),
+    up: (db) => safeAddColumn(db, `ALTER TABLE registered_groups ADD COLUMN channel TEXT`),
   },
   {
     name: '004_add_is_bot_message',
     up: (db) => {
-      db.exec(`ALTER TABLE messages ADD COLUMN is_bot_message INTEGER DEFAULT 0`);
+      safeAddColumn(db, `ALTER TABLE messages ADD COLUMN is_bot_message INTEGER DEFAULT 0`);
       db.prepare(`UPDATE messages SET is_bot_message = 1 WHERE content LIKE ?`).run(`${ASSISTANT_NAME}:%`);
     },
   },
