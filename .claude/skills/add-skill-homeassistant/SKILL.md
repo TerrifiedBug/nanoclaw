@@ -7,9 +7,20 @@ description: Add Home Assistant integration to NanoClaw via official MCP Server.
 
 Configures Home Assistant integration for agent containers using HA's official MCP Server integration. Agents get native MCP tools to control devices, query states, and manage automations.
 
+## Preflight
+
+Before installing, verify NanoClaw is set up:
+
+```bash
+[ -d node_modules ] && echo "DEPS: ok" || echo "DEPS: missing"
+docker image inspect nanoclaw-agent:latest &>/dev/null && echo "IMAGE: ok" || echo "IMAGE: not built"
+grep -q "ANTHROPIC_API_KEY\|CLAUDE_CODE_OAUTH_TOKEN" .env 2>/dev/null && echo "AUTH: ok" || echo "AUTH: missing"
+```
+
+If any check fails, tell the user to run `/nanoclaw-setup` first and stop.
+
 ## Prerequisites
 
-- NanoClaw must be set up and running (`/nanoclaw-setup`)
 - Home Assistant instance accessible from this server (local network or remote)
 - Home Assistant 2025.2 or newer (MCP Server integration was introduced in 2025.2)
 

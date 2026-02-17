@@ -7,6 +7,18 @@ description: Add Telegram as a channel. Can replace WhatsApp entirely or run alo
 
 This skill installs the Telegram channel plugin and guides through authentication.
 
+## Preflight
+
+Before installing, verify NanoClaw is set up:
+
+```bash
+[ -d node_modules ] && echo "DEPS: ok" || echo "DEPS: missing"
+docker image inspect nanoclaw-agent:latest &>/dev/null && echo "IMAGE: ok" || echo "IMAGE: not built"
+grep -q "ANTHROPIC_API_KEY\|CLAUDE_CODE_OAUTH_TOKEN" .env 2>/dev/null && echo "AUTH: ok" || echo "AUTH: missing"
+```
+
+If any check fails, tell the user to run `/nanoclaw-setup` first and stop.
+
 ## Step 1: Install Plugin
 
 Check if `plugins/channels/telegram/` exists. If not, copy from skill template files:

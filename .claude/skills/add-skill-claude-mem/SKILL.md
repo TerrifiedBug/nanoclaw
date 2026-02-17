@@ -13,6 +13,18 @@ Run all commands automatically. Only pause if a step fails.
 
 The claude-mem worker daemon runs on the host (port 37777) and stores observations in a SQLite + vector DB at `/root/.claude-mem/`. A socat bridge exposes it to Docker containers via 172.17.0.1:37777.
 
+## Preflight
+
+Before installing, verify NanoClaw is set up:
+
+```bash
+[ -d node_modules ] && echo "DEPS: ok" || echo "DEPS: missing"
+docker image inspect nanoclaw-agent:latest &>/dev/null && echo "IMAGE: ok" || echo "IMAGE: not built"
+grep -q "ANTHROPIC_API_KEY\|CLAUDE_CODE_OAUTH_TOKEN" .env 2>/dev/null && echo "AUTH: ok" || echo "AUTH: missing"
+```
+
+If any check fails, tell the user to run `/nanoclaw-setup` first and stop.
+
 ## Prerequisites
 
 - claude-mem plugin installed (`claude plugin add @thedotmack/claude-mem`)

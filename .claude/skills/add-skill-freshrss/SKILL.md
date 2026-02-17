@@ -7,9 +7,20 @@ description: Add FreshRSS feed reader integration to NanoClaw. Connects agents t
 
 Configures RSS feed access for agent containers using a self-hosted FreshRSS instance and its Google Reader API.
 
+## Preflight
+
+Before installing, verify NanoClaw is set up:
+
+```bash
+[ -d node_modules ] && echo "DEPS: ok" || echo "DEPS: missing"
+docker image inspect nanoclaw-agent:latest &>/dev/null && echo "IMAGE: ok" || echo "IMAGE: not built"
+grep -q "ANTHROPIC_API_KEY\|CLAUDE_CODE_OAUTH_TOKEN" .env 2>/dev/null && echo "AUTH: ok" || echo "AUTH: missing"
+```
+
+If any check fails, tell the user to run `/nanoclaw-setup` first and stop.
+
 ## Prerequisites
 
-- NanoClaw must be set up and running (`/nanoclaw-setup`)
 - A self-hosted FreshRSS instance with API access enabled
 
 ## Step 1: Check Existing Configuration

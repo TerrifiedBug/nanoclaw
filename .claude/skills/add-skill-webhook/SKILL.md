@@ -9,9 +9,20 @@ HTTP webhook endpoint for NanoClaw. External services POST events to per-group e
 
 Each group gets its own URL path (`/webhook/<group-folder>`) and unique secret token for isolation.
 
+## Preflight
+
+Before installing, verify NanoClaw is set up:
+
+```bash
+[ -d node_modules ] && echo "DEPS: ok" || echo "DEPS: missing"
+docker image inspect nanoclaw-agent:latest &>/dev/null && echo "IMAGE: ok" || echo "IMAGE: not built"
+grep -q "ANTHROPIC_API_KEY\|CLAUDE_CODE_OAUTH_TOKEN" .env 2>/dev/null && echo "AUTH: ok" || echo "AUTH: missing"
+```
+
+If any check fails, tell the user to run `/nanoclaw-setup` first and stop.
+
 ## Prerequisites
 
-- NanoClaw must be set up and running (`/nanoclaw-setup`)
 - At least one channel group must be registered (via `/nanoclaw-add-group`)
 
 ## Install / Add Route
