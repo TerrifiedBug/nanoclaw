@@ -113,10 +113,12 @@ echo 'CALDAV_ACCOUNTS=[{"name":"iCloud","serverUrl":"https://caldav.icloud.com",
 
 Copy plugin files:
 ```bash
-mkdir -p plugins/calendar/container-skills
+mkdir -p plugins/calendar/container-skills plugins/calendar/cal-cli/src
 cp .claude/skills/add-skill-cal/files/plugin.json plugins/calendar/
 cp .claude/skills/add-skill-cal/files/container-skills/SKILL.md plugins/calendar/container-skills/
 cp .claude/skills/add-skill-cal/files/Dockerfile.partial plugins/calendar/
+cp .claude/skills/add-skill-cal/files/package.json .claude/skills/add-skill-cal/files/tsconfig.json plugins/calendar/cal-cli/
+cp .claude/skills/add-skill-cal/files/src/*.ts plugins/calendar/cal-cli/src/
 ```
 
 ### Step 5: Configure Container Mounts
