@@ -94,8 +94,17 @@ export class GroupQueue {
     }
 
     if (state.active) {
+      // Preempt idle container so scheduled tasks don't wait for
+      // the 30-min IDLE_TIMEOUT. The _close sentinel is safe even if
+      // the container is mid-query: stream.end() only signals "no more
+      // user input" — the current agent turn completes fully before exit.
+      // Same mechanism the orchestrator's IDLE_TIMEOUT uses.
+      this.closeStdin(groupJid);
       state.pendingTasks.push({ id: taskId, groupJid, fn });
-      logger.debug({ groupJid, taskId }, 'Container active, task queued');
+      logger.debug(
+        { groupJid, taskId },
+        'Container active, preempting with close sentinel for scheduled task',
+      );
       return;
     }
 
