@@ -126,7 +126,7 @@ Before generating:
 
 ### Escalation:
 
-- If the platform requires core code changes: "This would need changes to NanoClaw's core code. You could use `/nanoclaw-customize` for that."
+- If the platform requires core code changes: "This would need changes to NanoClaw's core code, which is beyond what a plugin can do."
 - If npm dependencies needed: document as prerequisite in the installation skill
 - If container image changes needed (system packages): use `Dockerfile.partial` in the plugin directory — it's automatically merged during `container/build.sh`
 

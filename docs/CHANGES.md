@@ -309,7 +309,7 @@ These are clean fixes submitted to upstream. If they merge, the divergences coll
 
 ---
 
-## 8. New Skills (27)
+## 8. New Skills (26)
 
 Claude Code skills (`.claude/skills/`) that guide the AI through installing integrations. Each skill creates a plugin directory with manifest, code, and container-side instructions.
 
@@ -347,12 +347,11 @@ Claude Code skills (`.claude/skills/`) that guide the AI through installing inte
 | `add-channel-telegram-swarm` | Agent Teams support for Telegram (pool bot identities) |
 | `nanoclaw-add-group` | Generic skill to register a group on any installed channel |
 
-### Meta skills (8)
+### Meta skills (7)
 
 | Skill | What it does |
 |-------|-------------|
 | `nanoclaw-setup` | First-time installation, auth, service configuration |
-| `nanoclaw-customize` | Adding integrations, changing behavior |
 | `nanoclaw-debug` | Container issues, logs, troubleshooting |
 | `nanoclaw-set-model` | Change Claude model used by containers |
 | `create-skill-plugin` | Guided creation of new skill plugins from an idea (includes scoping guidance for sensitive plugins) |
@@ -365,7 +364,6 @@ Claude Code skills (`.claude/skills/`) that guide the AI through installing inte
 | Skill | What changed |
 |-------|-------------|
 | `nanoclaw-setup` | Major rewrite: channel-agnostic plugin flow, headless/Linux QR auth, systemd service support. Upstream's PR #258 replaced theirs with numbered shell scripts that hardcode WhatsApp. |
-| `nanoclaw-customize` | Plugin architecture docs, Linux service management references |
 | `nanoclaw-debug` | Channel-agnostic, plugin-aware (upstream version is WhatsApp-specific) |
 
 ---

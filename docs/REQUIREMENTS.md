@@ -160,7 +160,6 @@ A personal Claude assistant accessible via messaging channels, with minimal cust
 
 ### Skills
 - `/nanoclaw-setup` - Install dependencies, authenticate channels, configure services
-- `/nanoclaw-customize` - General-purpose skill for adding capabilities and behavior changes
 - `/create-channel-plugin` - Build a new channel plugin from scratch
 - `/create-skill-plugin` - Build a new skill plugin from scratch
 

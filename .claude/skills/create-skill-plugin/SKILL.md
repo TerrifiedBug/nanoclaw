@@ -127,7 +127,7 @@ Hard constraints on what this skill can and cannot touch.
 
 ### Escalation:
 
-- If the user's idea requires changes to NanoClaw source code — explain clearly: "This would need changes to NanoClaw's core code, which is beyond what a plugin can do. You could use `/nanoclaw-customize` for that."
+- If the user's idea requires changes to NanoClaw source code — explain clearly: "This would need changes to NanoClaw's core code, which is beyond what a plugin can do."
 - If the idea requires npm dependencies — don't run `npm install`. Instead, document it as a manual prerequisite in the generated add-skill-* SKILL.md (like how add-channel-telegram documents `npm install grammy`).
 - If the idea requires system packages in the Docker image (e.g., ffmpeg) — generate a `Dockerfile.partial` in the plugin's `files/` directory. The generated install skill should include `./container/build.sh` as a step.
 

@@ -128,7 +128,6 @@ nanoclaw/
 ├── .claude/
 │   └── skills/
 │       ├── nanoclaw-setup/SKILL.md             # /nanoclaw-setup - First-time installation
-│       ├── nanoclaw-customize/SKILL.md        # /nanoclaw-customize - Add capabilities
 │       ├── nanoclaw-debug/SKILL.md            # /nanoclaw-debug - Container debugging
 │       ├── add-channel-telegram/CHANNEL.md    # /add-channel-telegram - Telegram channel
 │       ├── add-skill-gmail/SKILL.md           # /add-skill-gmail - Gmail integration
