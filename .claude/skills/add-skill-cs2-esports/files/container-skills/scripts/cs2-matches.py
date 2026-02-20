@@ -14,7 +14,6 @@ def build_feed_url(team=None, competition=None, no_tbd=False):
     params = {"url": LIQUIPEDIA_URL}
     if team:
         params["teams_regex"] = team
-        params["teams_regex_use_fullnames"] = "true"
     if competition:
         params["competition_regex"] = competition
     if no_tbd:
