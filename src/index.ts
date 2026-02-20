@@ -1,3 +1,6 @@
+import fs from 'fs';
+import path from 'path';
+
 import {
   ASSISTANT_HAS_OWN_NUMBER,
   ASSISTANT_NAME,
@@ -52,7 +55,45 @@ export { escapeXml, formatMessages } from './router.js';
 const queue = new GroupQueue();
 let plugins: PluginRegistry;
 
+/**
+ * Singleton PID lock — prevents duplicate instances (e.g. npm run dev while
+ * systemd service is running), which would create duplicate channel listeners.
+ */
+function acquirePidLock(): void {
+  const lockFile = path.join(DATA_DIR, 'host.pid');
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+
+  if (fs.existsSync(lockFile)) {
+    const raw = fs.readFileSync(lockFile, 'utf-8').trim();
+    const existingPid = parseInt(raw, 10);
+    if (existingPid && existingPid !== process.pid) {
+      try {
+        process.kill(existingPid, 0); // signal 0 = alive check
+        logger.error(
+          { existingPid },
+          'Another NanoClaw process is already running — exiting to prevent duplicate listeners',
+        );
+        process.exit(1);
+      } catch {
+        logger.warn({ existingPid }, 'Reclaiming stale PID lock from dead process');
+      }
+    }
+  }
+
+  fs.writeFileSync(lockFile, String(process.pid), 'utf-8');
+
+  const removeLock = () => {
+    try {
+      if (fs.readFileSync(lockFile, 'utf-8').trim() === String(process.pid)) {
+        fs.unlinkSync(lockFile);
+      }
+    } catch { /* ignore */ }
+  };
+  process.on('exit', removeLock);
+}
+
 async function main(): Promise<void> {
+  acquirePidLock();
   ensureContainerRuntime();
   initDatabase();
   logger.info('Database initialized');

@@ -424,6 +424,7 @@ Re-exports preserve backward compatibility — no consumer import changes needed
 
 | Feature | Files | What |
 |---------|-------|------|
+| **Singleton PID guard** | `src/index.ts` | Prevents running duplicate instances (e.g. `npm run dev` while systemd service is active). Writes `host.pid`, checks if existing PID is alive, cleans up on exit |
 | **Heartbeat typing indicator** | `src/index.ts` | Shows typing indicator on every message, not just the first |
 | **Read receipts** | `plugins/channels/whatsapp/index.js` | Marks messages as read after processing |
 | **Presence management** | `src/index.ts` | Sends `available` presence on connect for consistent typing indicators |
