@@ -170,6 +170,17 @@ export class PluginRegistry {
     return current;
   }
 
+  /** Run all onOutboundMessage hooks in sequence */
+  async runOutboundHooks(text: string, jid: string, channel: string): Promise<string> {
+    let current = text;
+    for (const plugin of this.plugins) {
+      if (plugin.hooks.onOutboundMessage) {
+        current = await plugin.hooks.onOutboundMessage(current, jid, channel);
+      }
+    }
+    return current;
+  }
+
   /** Get plugins that declare channelPlugin: true */
   getChannelPlugins(): LoadedPlugin[] {
     return this.plugins.filter(p => p.manifest.channelPlugin);

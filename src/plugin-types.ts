@@ -68,6 +68,7 @@ export interface PluginHooks {
   onStartup?(ctx: PluginContext): Promise<void>;
   onShutdown?(): Promise<void>;
   onInboundMessage?(msg: InboundMessage, channel: string): Promise<InboundMessage>;
+  onOutboundMessage?(text: string, jid: string, channel: string): Promise<string>;
   onChannel?(ctx: PluginContext, config: ChannelPluginConfig): Promise<Channel>;
 }
 

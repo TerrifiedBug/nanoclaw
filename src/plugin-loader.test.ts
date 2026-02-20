@@ -182,6 +182,42 @@ describe('PluginRegistry.getPluginsForGroup', () => {
   });
 });
 
+describe('PluginRegistry.runOutboundHooks', () => {
+  it('returns text unchanged when no plugins have outbound hooks', async () => {
+    const registry = new PluginRegistry();
+    registry.add({ manifest: { name: 'no-hook' } as any, dir: '', hooks: {} });
+    const result = await registry.runOutboundHooks('hello', 'group@g.us', 'whatsapp');
+    expect(result).toBe('hello');
+  });
+
+  it('transforms text through outbound hooks in sequence', async () => {
+    const registry = new PluginRegistry();
+    registry.add({
+      manifest: { name: 'upper' } as any, dir: '', hooks: {
+        onOutboundMessage: async (text: string) => text.toUpperCase(),
+      },
+    });
+    registry.add({
+      manifest: { name: 'exclaim' } as any, dir: '', hooks: {
+        onOutboundMessage: async (text: string) => text + '!',
+      },
+    });
+    const result = await registry.runOutboundHooks('hello', 'group@g.us', 'whatsapp');
+    expect(result).toBe('HELLO!');
+  });
+
+  it('returns empty string when hook suppresses message', async () => {
+    const registry = new PluginRegistry();
+    registry.add({
+      manifest: { name: 'suppress' } as any, dir: '', hooks: {
+        onOutboundMessage: async () => '',
+      },
+    });
+    const result = await registry.runOutboundHooks('hello', 'group@g.us', 'whatsapp');
+    expect(result).toBe('');
+  });
+});
+
 describe('mergeMcpConfigs', () => {
   it('merges multiple mcp.json fragments', () => {
     const fragment1 = { mcpServers: { ha: { command: 'ha-server' } } };
