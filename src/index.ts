@@ -63,7 +63,15 @@ function acquirePidLock(): void {
   const lockFile = path.join(DATA_DIR, 'host.pid');
   fs.mkdirSync(DATA_DIR, { recursive: true });
 
-  if (fs.existsSync(lockFile)) {
+  // Atomic create via 'wx' flag — avoids check-then-act race between processes
+  try {
+    const fd = fs.openSync(lockFile, 'wx');
+    fs.writeSync(fd, String(process.pid));
+    fs.closeSync(fd);
+  } catch (err: any) {
+    if (err.code !== 'EEXIST') throw err;
+
+    // Lock file exists — check if the owning process is still alive
     const raw = fs.readFileSync(lockFile, 'utf-8').trim();
     const existingPid = parseInt(raw, 10);
     if (existingPid && existingPid !== process.pid) {
@@ -78,9 +86,9 @@ function acquirePidLock(): void {
         logger.warn({ existingPid }, 'Reclaiming stale PID lock from dead process');
       }
     }
+    // Stale or self-owned — overwrite with our PID
+    fs.writeFileSync(lockFile, String(process.pid), 'utf-8');
   }
-
-  fs.writeFileSync(lockFile, String(process.pid), 'utf-8');
 
   const removeLock = () => {
     try {
