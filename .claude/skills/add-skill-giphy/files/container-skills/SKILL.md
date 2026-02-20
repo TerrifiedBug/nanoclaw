@@ -21,26 +21,26 @@ Search for GIFs via Giphy. Requires `$GIPHY_API_KEY` environment variable.
 python3 /workspace/.claude/skills/gif-search/scripts/gif-search.py "deal with it"
 ```
 
-Returns JSON array with mp4 URLs and descriptions. Pick the most relevant result.
+Returns JSON array with gif and mp4 URLs and descriptions. Pick the most relevant result.
 
 ## How to Send
 
-Download the mp4 and send via IPC:
+Download the GIF and send via IPC:
 
 ```bash
-curl -sL "<mp4_url>" -o /workspace/group/media/reaction.mp4
+curl -sL "<gif_url>" -o /workspace/group/media/reaction.gif
 ```
 
 Then write a send_file IPC message:
 
 ```bash
 cat > /workspace/ipc/messages/gif-$(date +%s).json << 'GIFJSON'
-{"type":"send_file","chatJid":"CHAT_JID","filePath":"/workspace/group/media/reaction.mp4","caption":""}
+{"type":"send_file","chatJid":"CHAT_JID","filePath":"/workspace/group/media/reaction.gif","caption":""}
 GIFJSON
 ```
 
 ## Tips
 
 - Use specific search terms ("mind blown explosion" not "funny")
-- Always download the mp4 variant, not .gif (better cross-platform compatibility)
+- Prefer the `gif_url` — it works across all channels. Use `mp4_url` only if GIF is unavailable.
 - If the search returns no results, don't mention it — just skip the GIF

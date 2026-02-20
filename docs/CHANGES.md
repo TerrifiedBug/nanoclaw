@@ -441,8 +441,8 @@ Re-exports preserve backward compatibility — no consumer import changes needed
 | **Per-group webhook routing** | `plugins/webhook/` | Each group gets its own webhook path + token (upstream uses single global secret) |
 | **Agent browser as plugin** | `plugins/agent-browser/` | Moved from `container/skills/` to plugin system |
 | **Token count badge** | `repo-tokens/badge.svg` | Auto-updated context window usage badge |
-| **React IPC** | `src/ipc.ts` | New `react` IPC message type — agents can send emoji reactions via IPC files. Same authorization as `send_message` |
-| **GIF search skill** | `plugins/gif-search/` | Tenor API GIF search — agents find and send GIFs as mp4 for cross-platform compatibility |
+| **React IPC + MCP tool** | `src/ipc.ts`, `container/agent-runner/src/ipc-mcp-stdio.ts` | Agents can send emoji reactions via IPC. Host-side handler + agent-side `react` MCP tool. Same authorization as `send_message`. Channel skills document when to use reactions |
+| **GIF search skill** | `plugins/gif-search/` | Giphy API GIF search — returns both gif and mp4 URLs, defaults to GIF format for channel-agnostic compatibility |
 
 ---
 

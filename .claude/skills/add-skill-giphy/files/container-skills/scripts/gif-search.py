@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Search Giphy for GIFs. Returns mp4 URLs for cross-platform compatibility."""
+"""Search Giphy for GIFs. Returns gif and mp4 URLs."""
 import json
 import os
 import sys
@@ -29,12 +29,14 @@ def search(query, limit=3):
     results = []
     for item in data.get("data", []):
         images = item.get("images", {})
-        mp4 = images.get("original", {}).get("mp4")
+        gif_url = images.get("original", {}).get("url")
+        mp4_url = images.get("original", {}).get("mp4")
         preview = images.get("fixed_width_small", {}).get("url", "")
-        if mp4:
+        if gif_url or mp4_url:
             results.append({
                 "description": item.get("title", ""),
-                "mp4_url": mp4,
+                "gif_url": gif_url,
+                "mp4_url": mp4_url,
                 "preview_url": preview,
             })
 
