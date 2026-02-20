@@ -19,7 +19,7 @@ export function formatMessages(messages: NewMessage[]): string {
       inner += `<reply to="${escapeXml(m.reply_context.sender_name)}">${replyText}</reply>`;
     }
     inner += escapeXml(m.content);
-    return `<message sender="${escapeXml(m.sender_name)}" time="${m.timestamp}">${inner}</message>`;
+    return `<message id="${escapeXml(m.id)}" sender="${escapeXml(m.sender_name)}" time="${m.timestamp}">${inner}</message>`;
   });
   return `<messages>\n${lines.join('\n')}\n</messages>`;
 }
