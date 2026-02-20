@@ -1,14 +1,30 @@
 #!/usr/bin/env python3
 """Fetch upcoming CS2 matches from Liquipedia via esports-ics."""
 
-import sys
+import argparse
 import urllib.request
+import urllib.parse
 from datetime import datetime, timezone, timedelta
 
-FEED_URL = "https://ics.snwfdhmp.com/matches.ics?url=https%3A%2F%2Fliquipedia.net%2Fcounterstrike%2FLiquipedia%3AMatches"
+BASE_URL = "https://ics.snwfdhmp.com/matches.ics"
+LIQUIPEDIA_URL = "https://liquipedia.net/counterstrike/Liquipedia:Matches"
 
-def fetch_matches(days=2):
-    req = urllib.request.Request(FEED_URL, headers={"User-Agent": "nanoclaw-cs2"})
+
+def build_feed_url(team=None, competition=None, no_tbd=False):
+    params = {"url": LIQUIPEDIA_URL}
+    if team:
+        params["teams_regex"] = team
+        params["teams_regex_use_fullnames"] = "true"
+    if competition:
+        params["competition_regex"] = competition
+    if no_tbd:
+        params["ignore_tbd"] = "true"
+    return f"{BASE_URL}?{urllib.parse.urlencode(params)}"
+
+
+def fetch_matches(days=1, team=None, competition=None, no_tbd=False):
+    url = build_feed_url(team=team, competition=competition, no_tbd=no_tbd)
+    req = urllib.request.Request(url, headers={"User-Agent": "nanoclaw-cs2"})
     with urllib.request.urlopen(req, timeout=15) as resp:
         ics = resp.read().decode("utf-8")
 
@@ -35,22 +51,31 @@ def fetch_matches(days=2):
     matches.sort()
     return matches
 
-def main():
-    days = 2
-    if len(sys.argv) > 1:
-        try:
-            days = int(sys.argv[1])
-        except ValueError:
-            print(f"Usage: {sys.argv[0]} [days]", file=sys.stderr)
-            sys.exit(1)
 
-    matches = fetch_matches(days)
+def main():
+    parser = argparse.ArgumentParser(description="Fetch upcoming CS2 matches")
+    parser.add_argument("days", nargs="?", type=int, default=1,
+                        help="Number of days to look ahead (default: 1)")
+    parser.add_argument("--team", "-t", help="Filter by team name (regex)")
+    parser.add_argument("--competition", "-c", help="Filter by competition (regex)")
+    parser.add_argument("--no-tbd", action="store_true",
+                        help="Hide matches with TBD/unannounced teams")
+    args = parser.parse_args()
+
+    matches = fetch_matches(
+        days=args.days,
+        team=args.team,
+        competition=args.competition,
+        no_tbd=args.no_tbd,
+    )
+
     if not matches:
-        print(f"No upcoming CS2 matches in the next {days} day(s).")
+        print(f"No upcoming CS2 matches in the next {args.days} day(s).")
     else:
         for dt, summary in matches:
             t = dt.strftime("%a %d %b %H:%M UTC")
             print(f"{t} | {summary}")
+
 
 if __name__ == "__main__":
     main()
