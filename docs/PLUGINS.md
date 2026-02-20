@@ -132,6 +132,26 @@ Called for every inbound message before it reaches the agent. Hooks run in plugi
 
 The `InboundMessage` has the same shape as `NewMessage`: `id`, `chat_jid`, `sender`, `sender_name`, `content`, `timestamp`, plus optional `is_from_me`, `is_bot_message`, `mediaType`, `mediaPath`, and `reply_context`.
 
+### `onOutboundMessage(text: string, jid: string, channel: string)`
+
+Called for every outbound message before it is sent to the channel. Hooks run in plugin load order. Each hook receives the text and returns a (potentially modified) text. Return empty string to suppress the message entirely. This enables message transformation, formatting, filtering, or logging of outgoing messages.
+
+### IPC Extensions
+
+Plugins and agents can send reactions via IPC by writing a JSON file to the group's messages directory:
+
+```json
+{"type": "react", "chatJid": "group@g.us", "messageId": "MSG_ID", "emoji": "👍"}
+```
+
+The `send_message` IPC type now also accepts an optional `replyTo` field for quote-replies:
+
+```json
+{"type": "message", "chatJid": "group@g.us", "text": "Hello", "replyTo": "MSG_ID"}
+```
+
+Both follow the same authorization rules as existing IPC messages — main group can target any chat, non-main groups can only target their own chat.
+
 ### `onChannel(ctx: PluginContext, config: ChannelPluginConfig)`
 
 Return a `Channel` object to register a messaging channel (WhatsApp, Telegram, etc.). Channel plugins are a specialized plugin type with their own directory convention, interfaces, and lifecycle. See **[Channel Plugins](CHANNEL_PLUGINS.md)** for the full guide.
@@ -352,6 +372,8 @@ The plugin system adds two new files and modifies five existing files. Total foo
 
 **`src/types.ts`** — Type changes:
 - `OnInboundMessage` callback made `async` (returns `Promise`) to support async plugin hooks
+- `react?(jid: string, messageId: string, emoji: string): Promise<void>` — optional emoji reaction method on `Channel` interface
+- `sendMessage` now accepts optional `replyTo?: string` as 4th parameter for quote-replies
 
 **`container/Dockerfile`** — Container image:
 - Added `jq` to system packages (used by some plugin skills)

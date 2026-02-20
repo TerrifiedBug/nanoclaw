@@ -82,6 +82,7 @@ The plugin loader:
 | `src/config.ts` | `createTriggerPattern()` for per-group custom triggers, `SCHEDULED_TASK_IDLE_TIMEOUT` |
 | `src/db.ts` | `insertExternalMessage()` for plugins to inject messages, `channel` column (no backfill) |
 | `src/types.ts` | `OnInboundMessage` is now async, added `channel` field |
+| **Outbound hooks** | `onOutboundMessage(text, jid, channel)` on PluginHooks — transforms outbound text before channel delivery. Return empty to suppress. Pipeline pattern matching `onInboundMessage` |
 | `container/Dockerfile` | Added `jq`, skills directory, env-dir sourcing in entrypoint |
 | `container/build.sh` | Auto-detects Docker vs Apple Container, merges `Dockerfile.partial` files from plugins, uses project-root build context |
 | `container/agent-runner/src/index.ts` | Plugin hook loading, model selection, error detection |
@@ -121,6 +122,9 @@ Upstream has WhatsApp hardcoded throughout. This fork extracted WhatsApp into a 
 | **Router made generic** | `src/router.ts` routes to any channel based on JID prefix (`wa:`, `dc:`, `tg:`) |
 | **Group registration** | `src/db.ts` tracks which channel each group belongs to |
 | **WhatsApp tests removed from core** | `src/channels/whatsapp.test.ts` deleted (tests live with plugin now) |
+| **Reactions** | `react?(jid, messageId, emoji)` — optional emoji reaction method on Channel interface. WhatsApp (Baileys react), Discord (message.react), Telegram (setMessageReaction) |
+| **Reply-quoting** | `sendMessage` gains `replyTo` parameter — orchestrator automatically quotes the triggering message. IPC `send_message` also supports `replyTo` |
+| **Message IDs in prompts** | Agent XML now includes `id` attribute: `<message id="MSG_ID" sender="..." time="...">` — enables agents to reference specific messages |
 
 ### Channel plugins available
 
@@ -432,6 +436,8 @@ Re-exports preserve backward compatibility — no consumer import changes needed
 | **Per-group webhook routing** | `plugins/webhook/` | Each group gets its own webhook path + token (upstream uses single global secret) |
 | **Agent browser as plugin** | `plugins/agent-browser/` | Moved from `container/skills/` to plugin system |
 | **Token count badge** | `repo-tokens/badge.svg` | Auto-updated context window usage badge |
+| **React IPC** | `src/ipc.ts` | New `react` IPC message type — agents can send emoji reactions via IPC files. Same authorization as `send_message` |
+| **GIF search skill** | `plugins/gif-search/` | Tenor API GIF search — agents find and send GIFs as mp4 for cross-platform compatibility |
 
 ---
 
