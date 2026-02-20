@@ -107,6 +107,32 @@ systemctl restart nanoclaw  # or launchctl on macOS
 
 Send a WhatsApp message like "what's in my RSS feeds?" or "give me a news summary".
 
+## Existing Installation (Per-Group Credentials)
+
+If this plugin is already installed and you want **different credentials for a specific group** (e.g., a work account for one group, personal for another):
+
+1. Check which groups exist:
+   ```bash
+   ls -d groups/*/
+   ```
+
+2. Ask the user which group should get separate credentials.
+
+3. Collect the new FreshRSS credentials for that group.
+
+4. Write to the group's `.env` file (creates if needed):
+   ```bash
+   echo 'FRESHRSS_URL=https://other-freshrss.example.com' >> groups/{folder}/.env
+   echo 'FRESHRSS_USER=username' >> groups/{folder}/.env
+   echo 'FRESHRSS_API_KEY=api-key' >> groups/{folder}/.env
+   ```
+   These values override the global `.env` for that group's containers only.
+
+5. Restart NanoClaw:
+   ```bash
+   sudo systemctl restart nanoclaw
+   ```
+
 ## Remove
 
 1. `rm -rf plugins/freshrss/`

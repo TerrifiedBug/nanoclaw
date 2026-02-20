@@ -220,6 +220,32 @@ GOG_KEYRING_PASSWORD=$(grep GOG_KEYRING_PASSWORD .env | cut -d'=' -f2) XDG_CONFI
 - **"CALDAV_ACCOUNTS not defined"**: Check it's in both `.env` and `plugin.json` containerEnvVars.
 - **Nextcloud connection refused**: Verify the server URL includes `/remote.php/dav`.
 
+## Existing Installation (Per-Group Credentials)
+
+If this plugin is already installed and you want **different credentials for a specific group** (e.g., a work account for one group, personal for another):
+
+1. Check which groups exist:
+   ```bash
+   ls -d groups/*/
+   ```
+
+2. Ask the user which group should get separate credentials.
+
+3. Collect the new calendar credentials for that group.
+
+4. Write to the group's `.env` file (creates if needed):
+   ```bash
+   echo 'GOG_KEYRING_PASSWORD=new-password' >> groups/{folder}/.env
+   echo 'GOG_ACCOUNT=other@gmail.com' >> groups/{folder}/.env
+   echo 'CALDAV_ACCOUNTS=[{"name":"Work","serverUrl":"https://caldav.example.com","user":"work@example.com","pass":"app-password"}]' >> groups/{folder}/.env
+   ```
+   These values override the global `.env` for that group's containers only.
+
+5. Restart NanoClaw:
+   ```bash
+   sudo systemctl restart nanoclaw
+   ```
+
 ## Remove
 
 1. `rm -rf plugins/calendar/`

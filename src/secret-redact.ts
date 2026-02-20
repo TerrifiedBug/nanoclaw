@@ -81,6 +81,41 @@ export function loadSecrets(additionalSafeVars?: string[]): void {
     }
   }
 
+  // Also scan per-group .env files for secrets to redact
+  try {
+    const groupsDir = path.join(process.cwd(), 'groups');
+    for (const entry of fs.readdirSync(groupsDir)) {
+      try {
+        const groupEnvContent = fs.readFileSync(
+          path.join(groupsDir, entry, '.env'),
+          'utf-8',
+        );
+        for (const line of groupEnvContent.split('\n')) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith('#')) continue;
+          const eqIdx = trimmed.indexOf('=');
+          if (eqIdx === -1) continue;
+          const key = trimmed.slice(0, eqIdx).trim();
+          if (safeVars.has(key)) continue;
+          let value = trimmed.slice(eqIdx + 1).trim();
+          if (
+            (value.startsWith('"') && value.endsWith('"')) ||
+            (value.startsWith("'") && value.endsWith("'"))
+          ) {
+            value = value.slice(1, -1);
+          }
+          if (value.length >= MIN_SECRET_LENGTH) {
+            secretValues.push(value);
+          }
+        }
+      } catch {
+        // Group dir without .env — skip
+      }
+    }
+  } catch {
+    // No groups directory — skip
+  }
+
   // Also extract tokens from ~/.claude/.credentials.json (OAuth auth path)
   loadCredentialsTokens();
 }

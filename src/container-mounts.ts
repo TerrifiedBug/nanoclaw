@@ -22,6 +22,20 @@ function assertPathWithin(resolved: string, parent: string, label: string): void
   }
 }
 
+/** Parse .env file content into a Map of key → raw line. */
+function parseEnvLines(content: string): Map<string, string> {
+  const entries = new Map<string, string>();
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx === -1) continue;
+    const key = trimmed.slice(0, eqIdx).trim();
+    entries.set(key, trimmed);
+  }
+  return entries;
+}
+
 let pluginRegistry: PluginRegistry | null = null;
 
 /** Set the plugin registry for dynamic env vars and skill mounting */
@@ -265,18 +279,31 @@ function buildEnvMount(
 ): void {
   const envDir = path.join(DATA_DIR, 'env', group.folder);
   fs.mkdirSync(envDir, { recursive: true });
-  const envFile = path.join(projectRoot, '.env');
-  if (!fs.existsSync(envFile)) return;
 
-  const envContent = fs.readFileSync(envFile, 'utf-8');
+  // Parse global .env, then overlay group-specific .env (group values win)
+  const envMap = new Map<string, string>();
+  const envFile = path.join(projectRoot, '.env');
+  if (fs.existsSync(envFile)) {
+    for (const [key, line] of parseEnvLines(fs.readFileSync(envFile, 'utf-8'))) {
+      envMap.set(key, line);
+    }
+  }
+  const groupEnvFile = path.join(GROUPS_DIR, group.folder, '.env');
+  try {
+    for (const [key, line] of parseEnvLines(fs.readFileSync(groupEnvFile, 'utf-8'))) {
+      envMap.set(key, line);
+    }
+  } catch {
+    // No group .env — use global only
+  }
+  if (envMap.size === 0) return;
+
   const allowedVars = pluginRegistry
     ? pluginRegistry.getContainerEnvVars(group.channel, group.folder)
     : ['ANTHROPIC_API_KEY', 'ASSISTANT_NAME', 'CLAUDE_MODEL'];
-  const filteredLines = envContent.split('\n').filter((line) => {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) return false;
-    return allowedVars.some((v) => trimmed.startsWith(`${v}=`));
-  });
+  const filteredLines = [...envMap.entries()]
+    .filter(([key]) => allowedVars.includes(key))
+    .map(([, line]) => line);
 
   // Override CLAUDE_MODEL from store file if it exists (set via /set-model skill)
   const modelFile = path.join(projectRoot, 'store', 'claude-model');

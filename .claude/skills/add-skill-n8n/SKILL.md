@@ -162,6 +162,31 @@ systemctl restart nanoclaw  # or launchctl on macOS
 
 Send a WhatsApp message like "create an n8n workflow that checks my email every 5 minutes and alerts me if I get anything from my boss".
 
+## Existing Installation (Per-Group Credentials)
+
+If this plugin is already installed and you want **different credentials for a specific group** (e.g., a work account for one group, personal for another):
+
+1. Check which groups exist:
+   ```bash
+   ls -d groups/*/
+   ```
+
+2. Ask the user which group should get separate credentials.
+
+3. Collect the new n8n credentials for that group.
+
+4. Write to the group's `.env` file (creates if needed):
+   ```bash
+   echo 'N8N_URL=https://other-n8n.example.com' >> groups/{folder}/.env
+   echo 'N8N_API_KEY=eyJ...' >> groups/{folder}/.env
+   ```
+   These values override the global `.env` for that group's containers only.
+
+5. Restart NanoClaw:
+   ```bash
+   sudo systemctl restart nanoclaw
+   ```
+
 ## Remove
 
 1. `rm -rf plugins/n8n/`
