@@ -156,7 +156,7 @@ async function main(): Promise<void> {
   // Create pluginCtx first — channels array populated later but closure captures reference
   const pluginCtx: PluginContext = {
     insertMessage: insertExternalMessage,
-    sendMessage: (jid, text) => routeOutbound(orchestrator.channels, jid, text).then(() => {}),
+    sendMessage: (jid, text) => routeOutbound(orchestrator.channels, jid, text, undefined, undefined, plugins).then(() => {}),
     getRegisteredGroups: () => orchestrator.registeredGroups,
     getMainChannelJid: () => {
       const mainEntry = Object.entries(orchestrator.registeredGroups).find(
@@ -220,11 +220,11 @@ async function main(): Promise<void> {
     onProcess: (groupJid, proc, containerName, groupFolder) => queue.registerProcess(groupJid, proc, containerName, groupFolder),
     sendMessage: async (jid, rawText) => {
       const text = stripInternalTags(rawText);
-      if (text) await routeOutbound(orchestrator.channels, jid, text);
+      if (text) await routeOutbound(orchestrator.channels, jid, text, undefined, undefined, plugins);
     },
   });
   startIpcWatcher({
-    sendMessage: (jid, text, sender) => routeOutbound(orchestrator.channels, jid, text, sender).then(() => {}),
+    sendMessage: (jid, text, sender) => routeOutbound(orchestrator.channels, jid, text, sender, undefined, plugins).then(() => {}),
     sendFile: (jid, buffer, mime, fileName, caption) => routeOutboundFile(orchestrator.channels, jid, buffer, mime, fileName, caption),
     registeredGroups: () => orchestrator.registeredGroups,
     registerGroup: (jid, group) => orchestrator.registerGroup(jid, group),

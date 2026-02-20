@@ -1,4 +1,5 @@
 import { logger } from './logger.js';
+import type { PluginRegistry } from './plugin-loader.js';
 import { Channel, NewMessage } from './types.js';
 
 export function escapeXml(s: string): string {
@@ -37,13 +38,25 @@ export async function routeOutbound(
   jid: string,
   text: string,
   sender?: string,
+  replyTo?: string,
+  pluginRegistry?: PluginRegistry,
 ): Promise<boolean> {
   const channel = channels.find((c) => c.ownsJid(jid) && c.isConnected());
   if (!channel) {
     logger.warn({ jid }, 'No connected channel for JID, message dropped');
     return false;
   }
-  await channel.sendMessage(jid, text, sender);
+
+  let outText = text;
+  if (pluginRegistry) {
+    outText = await pluginRegistry.runOutboundHooks(outText, jid, channel.name);
+    if (!outText) {
+      logger.debug({ jid }, 'Outbound message suppressed by plugin hook');
+      return true;
+    }
+  }
+
+  await channel.sendMessage(jid, outText, sender, replyTo);
   return true;
 }
 

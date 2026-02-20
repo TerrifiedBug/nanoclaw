@@ -28,7 +28,7 @@ export interface OrchestratorDeps {
 
   // Routing
   formatMessages: (messages: NewMessage[]) => string;
-  routeOutbound: (channels: Channel[], jid: string, text: string, sender?: string) => Promise<boolean>;
+  routeOutbound: (channels: Channel[], jid: string, text: string, sender?: string, replyTo?: string, pluginRegistry?: import('./plugin-loader.js').PluginRegistry) => Promise<boolean>;
   stripInternalTags: (text: string) => string;
   createTriggerPattern: (trigger: string) => RegExp;
 
