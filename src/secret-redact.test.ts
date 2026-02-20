@@ -5,6 +5,7 @@ import path from 'path';
 
 let tmpDir: string;
 let cwdSpy: ReturnType<typeof vi.spyOn>;
+let homeSpy: ReturnType<typeof vi.spyOn>;
 
 // Dynamic import after mocks — fresh module state each test
 let loadSecrets: typeof import('./secret-redact.js').loadSecrets;
@@ -13,6 +14,7 @@ let redactSecrets: typeof import('./secret-redact.js').redactSecrets;
 beforeEach(async () => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nanoclaw-redact-test-'));
   cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(tmpDir);
+  homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(tmpDir);
   vi.resetModules();
   const mod = await import('./secret-redact.js');
   loadSecrets = mod.loadSecrets;
@@ -21,6 +23,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   cwdSpy.mockRestore();
+  homeSpy.mockRestore();
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
@@ -262,5 +265,58 @@ describe('non-secret safe-list exemptions', () => {
     expect(redactSecrets('TARS-EXTENDED')).toBe('TARS-EXTENDED');
     expect(redactSecrets('sk-ant-real-secret-val')).toBe('[REDACTED]');
     expect(redactSecrets('claude-sonnet-4-5-20250514')).toBe('claude-sonnet-4-5-20250514');
+  });
+});
+
+function writeCreds(data: object): void {
+  const claudeDir = path.join(tmpDir, '.claude');
+  fs.mkdirSync(claudeDir, { recursive: true });
+  fs.writeFileSync(path.join(claudeDir, '.credentials.json'), JSON.stringify(data));
+}
+
+describe('credentials.json OAuth token redaction', () => {
+  it('redacts accessToken from credentials.json', () => {
+    writeEnv('');
+    writeCreds({ accessToken: 'oauth-access-token-xyz123' });
+    loadSecrets();
+
+    expect(redactSecrets('token is oauth-access-token-xyz123')).toBe('token is [REDACTED]');
+  });
+
+  it('redacts refreshToken from credentials.json', () => {
+    writeEnv('');
+    writeCreds({ refreshToken: 'oauth-refresh-token-abc456' });
+    loadSecrets();
+
+    expect(redactSecrets('oauth-refresh-token-abc456')).toBe('[REDACTED]');
+  });
+
+  it('redacts both accessToken and refreshToken', () => {
+    writeEnv('');
+    writeCreds({
+      accessToken: 'access-token-abcdef',
+      refreshToken: 'refresh-token-ghijkl',
+    });
+    loadSecrets();
+
+    expect(redactSecrets('access-token-abcdef and refresh-token-ghijkl')).toBe(
+      '[REDACTED] and [REDACTED]',
+    );
+  });
+
+  it('combines .env secrets with credentials.json tokens', () => {
+    writeEnv('ANTHROPIC_API_KEY=sk-ant-env-secret-val');
+    writeCreds({ accessToken: 'oauth-creds-file-token' });
+    loadSecrets();
+
+    expect(redactSecrets('sk-ant-env-secret-val')).toBe('[REDACTED]');
+    expect(redactSecrets('oauth-creds-file-token')).toBe('[REDACTED]');
+  });
+
+  it('works when credentials.json does not exist', () => {
+    writeEnv('ANTHROPIC_API_KEY=sk-ant-no-creds-file');
+    loadSecrets();
+
+    expect(redactSecrets('sk-ant-no-creds-file')).toBe('[REDACTED]');
   });
 });

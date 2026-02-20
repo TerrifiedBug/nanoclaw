@@ -6,8 +6,12 @@
  * Reads ALL values from .env and redacts them from outbound text by default.
  * Only vars on a known non-secret safe-list are exempt. This means any new
  * secret added to .env is automatically protected without touching this code.
+ *
+ * Also reads OAuth tokens from ~/.claude/.credentials.json, which is the
+ * other auth path (copied into containers for SDK token refresh).
  */
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 
 const REDACTED = '[REDACTED]';
@@ -75,6 +79,24 @@ export function loadSecrets(additionalSafeVars?: string[]): void {
     if (value.length >= MIN_SECRET_LENGTH) {
       secretValues.push(value);
     }
+  }
+
+  // Also extract tokens from ~/.claude/.credentials.json (OAuth auth path)
+  loadCredentialsTokens();
+}
+
+function loadCredentialsTokens(): void {
+  const credsFile = path.join(os.homedir(), '.claude', '.credentials.json');
+  try {
+    const data = JSON.parse(fs.readFileSync(credsFile, 'utf-8'));
+    for (const key of ['accessToken', 'refreshToken'] as const) {
+      const token = data[key];
+      if (typeof token === 'string' && token.length >= MIN_SECRET_LENGTH) {
+        secretValues.push(token);
+      }
+    }
+  } catch {
+    // No credentials file or invalid JSON — skip
   }
 }
 
