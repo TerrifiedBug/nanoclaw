@@ -95,8 +95,20 @@ Plugins integrate deeply with the container system at build time and runtime:
 - **`Dockerfile.partial`** — Plugins can declare extra image layers (e.g., calendar plugin installs `gogcli` and `cal-cli`). `container/build.sh` merges all partials before the final `COPY`/`ENTRYPOINT`.
 - **Container mounts** — Plugin manifests declare `containerMounts` which are injected alongside core mounts. Skills go to `/workspace/.claude/skills/{plugin}/`, hooks to `/workspace/plugin-hooks/`.
 - **MCP merging** — Each plugin can provide an `mcp.json`. Per-group scoped configs are merged and written to `data/env/{groupFolder}/merged-mcp.json`, mounted at `/workspace/.mcp.json` in that group's container.
-- **Env var collection** — Plugin-declared `containerEnvVars` are filtered from `.env` and written to `data/env/` for container access.
+- **Env var collection** — Plugin-declared `containerEnvVars` are filtered from `.env` and written to `data/env/` for container access. Per-group `.env` overrides layer on top (see below).
 - **Scoping** — Plugins declare which channels and groups they apply to (`"channels": ["whatsapp"]`, `"groups": ["main"]`), so a Discord-only plugin won't load in WhatsApp containers. All plugins now include explicit `"channels": ["*"], "groups": ["*"]` in their `plugin.json` for visibility (previously implicit defaults). Sensitive plugin installers (homeassistant, gmail, imap-read, notion, github, n8n, calendar) prompt users to choose group restrictions during installation.
+
+### Per-group credential overrides
+
+Groups can have their own `.env` files at `groups/{folder}/.env` that override global `.env` values for that group's containers only. This enables scenarios like: main group uses personal Google creds, a shared group uses team calendar creds.
+
+**How it works:**
+- `container-mounts.ts` (`buildEnvMount`) parses the global `.env` into a key→value map, then overlays `groups/{folder}/.env` if it exists (group values win), then filters through the `containerEnvVars` allowlist as before
+- `secret-redact.ts` (`loadSecrets`) scans all `groups/*/.env` files at startup so per-group secrets are redacted from outbound messages/logs
+- Installation-level auth (`ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`) is passed via stdin secrets and is NOT overridable per-group (security boundary)
+- New group `.env` files require a restart for redaction to pick them up (same as global `.env`)
+
+All 16 `add-skill-*` SKILL.md templates document per-group support: Tier 1 (10 personal account plugins) have full "Existing Installation" sections, Tier 2 (4 shared API key plugins) have brief notes, Tier 3 (2 system-wide plugins) note it's not applicable.
 
 ### Why this matters
 

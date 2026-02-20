@@ -171,6 +171,31 @@ Send a message in your channel like:
 - **"GOG_KEYRING_PASSWORD not set"**: Check it's in `.env` and the plugin's `containerEnvVars` includes it
 - **Gmail commands fail but Calendar works**: Gmail scopes not authorized -- re-run Step 3 with `--services gmail,calendar`
 
+## Existing Installation (Per-Group Credentials)
+
+If this plugin is already installed and you want **different credentials for a specific group** (e.g., a work account for one group, personal for another):
+
+1. Check which groups exist:
+   ```bash
+   ls -d groups/*/
+   ```
+
+2. Ask the user which group should get separate credentials.
+
+3. Collect the new GOG credentials for that group.
+
+4. Write to the group's `.env` file (creates if needed):
+   ```bash
+   echo 'GOG_KEYRING_PASSWORD=new-password' >> groups/{folder}/.env
+   echo 'GOG_ACCOUNT=other@gmail.com' >> groups/{folder}/.env
+   ```
+   These values override the global `.env` for that group's containers only.
+
+5. Restart NanoClaw:
+   ```bash
+   sudo systemctl restart nanoclaw
+   ```
+
 ## Remove
 
 1. `rm -rf plugins/gmail/`

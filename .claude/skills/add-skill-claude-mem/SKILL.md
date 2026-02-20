@@ -171,6 +171,8 @@ systemctl start claude-mem-worker
 - **Port conflict:** `lsof -i :37777` -- kill orphaned workers first
 - **Services status:** `systemctl status claude-mem-worker claude-mem-bridge`
 
+**Per-group credential overrides:** Not applicable. Claude-mem is a system-wide service shared across all groups.
+
 ## Uninstall
 
 1. Stop the services:

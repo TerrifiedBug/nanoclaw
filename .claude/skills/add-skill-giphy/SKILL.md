@@ -60,6 +60,8 @@ else:
 "
 ```
 
+**Per-group overrides:** If a specific group needs a different Giphy API key, add `GIPHY_API_KEY=...` to `groups/{folder}/.env`. See `/create-skill-plugin` for details.
+
 ## Remove
 
 1. ```bash

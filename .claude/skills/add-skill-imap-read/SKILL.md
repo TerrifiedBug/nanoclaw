@@ -127,6 +127,30 @@ Tell the user:
 - **Gmail blocks access**: Ensure 2-Step Verification is ON and you're using an app password.
 - **Timeout errors**: Some corporate IMAP servers require VPN.
 
+## Existing Installation (Per-Group Credentials)
+
+If this plugin is already installed and you want **different credentials for a specific group** (e.g., a work account for one group, personal for another):
+
+1. Check which groups exist:
+   ```bash
+   ls -d groups/*/
+   ```
+
+2. Ask the user which group should get separate credentials.
+
+3. Collect the new IMAP email accounts for that group.
+
+4. Write to the group's `.env` file (creates if needed):
+   ```bash
+   echo 'IMAP_READ_ACCOUNTS=[{"name":"Work","host":"imap.gmail.com","port":993,"user":"work@company.com","pass":"app-password"}]' >> groups/{folder}/.env
+   ```
+   These values override the global `.env` for that group's containers only.
+
+5. Restart NanoClaw:
+   ```bash
+   sudo systemctl restart nanoclaw
+   ```
+
 ## Remove
 
 1. `rm -rf plugins/imap-read/`

@@ -85,6 +85,8 @@ systemctl restart nanoclaw  # or launchctl on macOS
 
 Send a WhatsApp message like "when's the next train from Didcot to Paddington?"
 
+**Per-group overrides:** If a specific group needs a different National Rail token, add `NATIONAL_RAIL_TOKEN=...` to `groups/{folder}/.env`. See `/create-skill-plugin` for details.
+
 ## Remove
 
 1. `rm -rf plugins/trains/`

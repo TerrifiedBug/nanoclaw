@@ -89,6 +89,8 @@ tail -f logs/nanoclaw.log | grep -i "voice\|transcri"
 - **Voice messages not detected**: Ensure you're sending voice notes, not audio file attachments
 - **No transcription on a channel**: That channel plugin may not set `mediaType`/`mediaHostPath` on audio messages
 
+**Per-group credential overrides:** Not applicable. Transcription is a system-wide service that processes all inbound audio.
+
 ## Remove
 
 1. `rm -rf plugins/transcription/`

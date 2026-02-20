@@ -734,13 +734,51 @@ Source: `src/plugin-loader.ts`
 
 ### Environment Variable Flow
 
-`.env` -> listed in `containerEnvVars` -> container process environment -> accessible in:
+`.env` (global) → `groups/{folder}/.env` (per-group override) → filtered by `containerEnvVars` → container process environment → accessible in:
 
 - **Agent skills** (via Bash: `$VAR_NAME`)
 - **MCP configs** (via `${VAR_NAME}` substitution in mcp.json)
 - **Container hooks** (via `ctx.env.VAR_NAME` in register function)
 
 Host hooks access env vars directly via `process.env.VAR_NAME` (they run in the main NanoClaw process).
+
+**Per-group overrides:** If `groups/{folder}/.env` exists, its values take precedence over the global `.env` for that group's containers only. This allows different groups to use different credentials for the same plugin (e.g., personal Gmail in one group, work Gmail in another). The global `.env` remains the default for all groups that don't have a per-group override.
+
+### Per-Group Credential Override Pattern
+
+When a plugin is already installed globally and the user wants different credentials for a specific group, use this pattern in the generated `add-skill-*` SKILL.md:
+
+```markdown
+## Existing Installation (Per-Group Credentials)
+
+If this plugin is already installed and you want **different credentials for a specific group** (e.g., a work account for one group, personal for another):
+
+1. Check which groups exist:
+   \`\`\`bash
+   ls -d groups/*/
+   \`\`\`
+
+2. Ask the user which group should get separate credentials.
+
+3. Collect the new credentials for that group.
+
+4. Write them to the group's `.env` file (creates if needed, appends/replaces):
+   \`\`\`bash
+   # Example: set a different {VAR_NAME} for the "work" group
+   echo '{VAR_NAME}={value}' >> groups/work/.env
+   \`\`\`
+
+5. Restart NanoClaw for the override to take effect.
+```
+
+**When to include this section in a generated skill:**
+- Plugins with personal account credentials (email, calendar, GitHub, etc.) — always include it
+- Plugins with single shared API keys (search, weather) — include a brief note that per-group overrides are supported but unlikely to be needed
+- System-wide plugins (memory, transcription) or channel plugins — do NOT include it
+
+**When NOT to use per-group overrides:**
+- Installation-level auth tokens (`ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`) — these are passed via stdin secrets, not `.env`
+- Channel plugin credentials — one instance per channel, not per-group
 
 ### Skill Mount Path
 

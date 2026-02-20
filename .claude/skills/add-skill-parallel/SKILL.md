@@ -89,6 +89,8 @@ The agent now has Parallel AI search and deep research tools. Quick search is us
 - **Connection timeout**: Parallel AI servers may be down -- check https://status.parallel.ai
 - **Deep research tasks never complete**: Check that the scheduler is running and the polling task was created
 
+**Per-group overrides:** If a specific group needs a different Parallel API key, add `PARALLEL_API_KEY=...` to `groups/{folder}/.env`. See `/create-skill-plugin` for details.
+
 ## Remove
 
 1. `rm -rf plugins/parallel/`

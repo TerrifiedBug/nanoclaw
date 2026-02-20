@@ -96,6 +96,31 @@ Make sure the plugin was copied correctly:
 ls plugins/norish/container-skills/SKILL.md
 ```
 
+## Existing Installation (Per-Group Credentials)
+
+If this plugin is already installed and you want **different credentials for a specific group** (e.g., a work account for one group, personal for another):
+
+1. Check which groups exist:
+   ```bash
+   ls -d groups/*/
+   ```
+
+2. Ask the user which group should get separate credentials.
+
+3. Collect the new Norish credentials for that group.
+
+4. Write to the group's `.env` file (creates if needed):
+   ```bash
+   echo 'NORISH_URL=https://other-norish.example.com' >> groups/{folder}/.env
+   echo 'NORISH_API_KEY=api-key' >> groups/{folder}/.env
+   ```
+   These values override the global `.env` for that group's containers only.
+
+5. Restart NanoClaw:
+   ```bash
+   sudo systemctl restart nanoclaw
+   ```
+
 ## Remove
 
 1. `rm -rf plugins/norish/`

@@ -180,6 +180,22 @@ class WhatsAppChannel {
             msg.message?.imageMessage?.caption ||
             msg.message?.videoMessage?.caption ||
             '';
+
+          // Translate @mention IDs to @DisplayName so trigger patterns match.
+          // WhatsApp encodes mentions as @LID or @phonenumber in the text,
+          // not the display name shown in the UI.
+          const mentionedJids = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid || [];
+          if (mentionedJids.length > 0 && content) {
+            const myPhone = this.sock?.user?.id?.split(':')[0];
+            const myLid = this.sock?.user?.lid?.split(':')[0];
+            for (const jid of mentionedJids) {
+              const id = jid.split('@')[0];
+              if ((myPhone && id === myPhone) || (myLid && id === myLid)) {
+                content = content.replace(new RegExp(`@${id}\\b`, 'g'), `@${this.config.assistantName}`);
+              }
+            }
+          }
+
           const rawSender = msg.key.participant || msg.key.remoteJid || '';
           const sender = await this.translateJid(rawSender);
           const senderName = msg.pushName || sender.split('@')[0];
@@ -208,8 +224,14 @@ class WhatsAppChannel {
               || null;
             const rawQuotedSender = ctxInfo.participant || '';
             const quotedSender = rawQuotedSender ? await this.translateJid(rawQuotedSender) : '';
+            // Use assistant name if replying to the bot's own message
+            const myPhone = this.sock?.user?.id?.split(':')[0];
+            const quotedPhone = quotedSender?.split('@')[0];
+            const quotedName = (myPhone && quotedPhone === myPhone)
+              ? this.config.assistantName
+              : (quotedSender ? quotedSender.split('@')[0] : 'unknown');
             replyContext = {
-              sender_name: quotedSender ? quotedSender.split('@')[0] : 'unknown',
+              sender_name: quotedName,
               text: quotedText,
             };
           }
@@ -318,16 +340,19 @@ class WhatsAppChannel {
     }
   }
 
-  async react(jid, messageId, emoji) {
+  async react(jid, messageId, emoji, participant, fromMe) {
     if (!this.connected) {
       this.logger.warn({ jid, messageId }, 'WA disconnected, cannot react');
       return;
     }
     try {
-      await this.sock.sendMessage(jid, {
-        react: { text: emoji, key: { remoteJid: jid, id: messageId, fromMe: false } },
-      });
-      this.logger.info({ jid, messageId, emoji }, 'Reaction sent');
+      const key = { remoteJid: jid, id: messageId, fromMe: fromMe ?? false };
+      // Group reactions require participant (sender JID) in the key
+      if (participant && jid.endsWith('@g.us')) {
+        key.participant = participant;
+      }
+      await this.sock.sendMessage(jid, { react: { text: emoji, key } });
+      this.logger.info({ jid, messageId, emoji, participant, fromMe }, 'Reaction sent');
     } catch (err) {
       this.logger.error({ jid, messageId, emoji, err }, 'Failed to send reaction');
     }
