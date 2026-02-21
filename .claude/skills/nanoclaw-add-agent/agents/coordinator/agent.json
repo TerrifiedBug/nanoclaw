@@ -1,0 +1,5 @@
+{
+  "description": "Project coordinator for breaking down tasks, tracking progress, and managing dependencies",
+  "model": "haiku",
+  "maxTurns": 20
+}

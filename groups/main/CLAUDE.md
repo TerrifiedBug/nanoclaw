@@ -245,15 +245,15 @@ The task will run in that group's context with access to their files and memory.
 
 ## Agent Teams
 
-If `/workspace/group/agents/` exists, it contains specialized agent definitions you can spawn via Agent Teams.
+If you see custom agents listed as `subagent_type` options on the Task tool (like `"research"`), these are group-specific agents with their own identity and instructions already loaded.
 
-Each subdirectory is an agent:
-- `agents/{name}/IDENTITY.md` — who the agent is (use as their system prompt)
-- `agents/{name}/CLAUDE.md` — how they work (include in their task description)
+To spawn an agent:
+1. Use `Task` with the agent's `subagent_type` (e.g., `subagent_type: "research"`)
+2. Set `run_in_background: true` so you remain responsive while the agent works
+3. Respond to the user immediately (e.g., "Research is looking into that") — don't wait
 
-When a user's request matches an agent's specialty, create a team using `TeamCreate`:
-- Read the agent's IDENTITY.md and CLAUDE.md from `/workspace/group/agents/{name}/`
-- Use the folder name as the `sender` parameter so their messages appear with their identity
-- You don't need agents for simple tasks — they're for when specialized focus helps
+Agents send their results to the chat using `mcp__nanoclaw__send_message` with their own `sender` name (e.g., `sender: "Research"`), so results appear with the agent's identity.
 
-To see what agents are available, list `/workspace/group/agents/` and read the first line of each IDENTITY.md.
+Use `TaskOutput` to check on a background agent's progress if needed. You don't need agents for simple tasks — they're for when specialized focus helps.
+
+Agent definitions live in `/workspace/group/agents/{name}/` with `agent.json`, `IDENTITY.md`, and `CLAUDE.md`. They are auto-discovered at container startup.

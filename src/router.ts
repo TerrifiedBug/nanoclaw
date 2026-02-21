@@ -3,6 +3,23 @@ import type { PluginRegistry } from './plugin-loader.js';
 import { redactSecrets } from './secret-redact.js';
 import { Channel, NewMessage } from './types.js';
 
+/** Known auth/API error patterns from Claude API and Claude Code SDK. */
+const AUTH_ERROR_PATTERNS = [
+  'does not have access to claude',
+  'oauth token has expired',
+  'obtain a new token',
+  'refresh your existing token',
+  'authentication_error',
+  'invalid_api_key',
+  'please login again',
+];
+
+/** Check if an error message indicates an authentication/authorization failure. */
+export function isAuthError(text: string): boolean {
+  const lower = text.toLowerCase();
+  return AUTH_ERROR_PATTERNS.some(p => lower.includes(p));
+}
+
 export function escapeXml(s: string): string {
   return s
     .replace(/&/g, '&amp;')

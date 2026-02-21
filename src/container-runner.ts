@@ -226,22 +226,9 @@ export async function runContainerAgent(
       clearTimeout(timeout);
       const duration = Date.now() - startTime;
 
-      // Sync refreshed OAuth credentials back to host
-      // If SDK refreshed the token inside the container, propagate to host
-      const groupCredsFile = path.join(
-        DATA_DIR, 'sessions', group.folder, '.claude', '.credentials.json',
-      );
-      const hostCreds = path.join(getHomeDir(), '.claude', '.credentials.json');
-      if (fs.existsSync(groupCredsFile) && fs.existsSync(hostCreds)) {
-        try {
-          const containerCreds = JSON.parse(fs.readFileSync(groupCredsFile, 'utf-8'));
-          const currentCreds = JSON.parse(fs.readFileSync(hostCreds, 'utf-8'));
-          if (containerCreds.claudeAiOauth?.expiresAt > (currentCreds.claudeAiOauth?.expiresAt || 0)) {
-            fs.writeFileSync(hostCreds, JSON.stringify(containerCreds), { mode: 0o600 });
-            logger.info({ group: group.name }, 'Synced refreshed OAuth credentials back to host');
-          }
-        } catch { /* non-fatal */ }
-      }
+      // No credentials sync-back needed — credentials file is bind-mounted
+      // directly from the host. SDK writes inside the container are immediately
+      // visible on the host and vice versa.
 
       if (timedOut) {
         const ts = new Date().toISOString().replace(/[:.]/g, '-');

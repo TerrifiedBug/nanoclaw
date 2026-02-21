@@ -11,6 +11,7 @@ import type { ContainerOutput } from './container-runner.js';
 import type { AvailableGroup } from './snapshots.js';
 import type { GroupQueue } from './group-queue.js';
 import type { ScheduledTask } from './types.js';
+import { isAuthError } from './router.js';
 
 /** Dependency injection interface for the orchestrator. */
 export interface OrchestratorDeps {
@@ -214,10 +215,26 @@ export class MessageOrchestrator {
 
     let hadError = false;
     let outputSentToUser = false;
+    let authErrorNotified = false;
 
     const output = await this.runAgent(group, prompt, chatJid, async (result) => {
       if (result.status === 'error') {
         hadError = true;
+
+        // Auth errors get immediate user notification regardless of prior output
+        const errorText = [result.result, result.error].filter(Boolean).join(' ');
+        if (!authErrorNotified && isAuthError(errorText)) {
+          authErrorNotified = true;
+          this.deps.logger.error(
+            { group: group.name, error: errorText.slice(0, 300) },
+            'Auth error detected in container output',
+          );
+          await this.deps.routeOutbound(
+            this.channels,
+            chatJid,
+            `${this.deps.assistantName}: [Auth Error] My API authentication has expired or is invalid. The admin needs to refresh the token. I'll retry automatically once it's fixed.`,
+          ).catch(() => {});
+        }
         return;
       }
       if (result.result) {
@@ -237,20 +254,24 @@ export class MessageOrchestrator {
     if (output === 'error' || hadError) {
       if (outputSentToUser) {
         this.consecutiveErrors[chatJid] = 0;
-        this.deps.logger.warn({ group: group.name }, 'Agent error after output was sent, skipping cursor rollback to prevent duplicates');
+        this.deps.logger.warn(
+          { group: group.name, authError: authErrorNotified },
+          'Agent error after output was sent, skipping cursor rollback to prevent duplicates',
+        );
         return true;
       }
 
       const errorCount = (this.consecutiveErrors[chatJid] || 0) + 1;
       this.consecutiveErrors[chatJid] = errorCount;
 
-      if (errorCount === 1) {
+      // Only send generic error if we haven't already sent an auth-specific message
+      if (errorCount === 1 && !authErrorNotified) {
         await this.deps.routeOutbound(this.channels, chatJid, `${this.deps.assistantName}: [Error] Something went wrong processing your message. Will retry on next message.`).catch(() => {});
       }
 
       if (errorCount >= MAX_CONSECUTIVE_ERRORS) {
         this.deps.logger.error(
-          { group: group.name, errorCount },
+          { group: group.name, errorCount, authError: authErrorNotified },
           'Max consecutive errors reached, advancing cursor past failing messages',
         );
         this.consecutiveErrors[chatJid] = 0;
@@ -259,7 +280,10 @@ export class MessageOrchestrator {
 
       this.lastAgentTimestamp[chatJid] = previousCursor;
       this.saveState();
-      this.deps.logger.warn({ group: group.name, errorCount }, 'Agent error, rolled back message cursor for retry');
+      this.deps.logger.warn(
+        { group: group.name, errorCount, authError: authErrorNotified },
+        'Agent error, rolled back message cursor for retry',
+      );
       return false;
     }
 

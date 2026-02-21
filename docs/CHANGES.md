@@ -211,6 +211,8 @@ Upstream targets macOS with Apple Container. This fork adds full Docker support 
 - **Crashpad handler**: Chromium's crash reporter needs a real handler binary, not the no-op wrapper upstream uses for Apple Container
 - **Env file quoting**: Docker `--env-file` doesn't handle quotes the same as Apple Container → env value quoting in mount code
 - **Container shutdown**: `group-queue.ts` explicitly calls `docker stop` with 10s grace period during graceful shutdown
+- **OAuth credential bind mount**: Host `~/.claude/.credentials.json` is bind-mounted directly into containers (file-level mount overlaying the session directory mount) instead of copied at spawn time. If any host process refreshes the token, containers see it immediately — eliminates stale token failures during long conversations
+- **Auth error detection**: `orchestrator.ts` detects auth-specific error patterns (expired OAuth, invalid API key) and sends a targeted `[Auth Error]` notification to the user immediately, even when the agent had already sent output earlier in the conversation. Prevents silent failures where auth expires mid-conversation
 
 ---
 
@@ -231,7 +233,7 @@ Upstream targets macOS with Apple Container. This fork adds full Docker support 
 | File | What |
 |------|------|
 | `container/agent-runner/src/index.ts` | Secret scrubbing from agent output, security hook loading |
-| `src/container-runner.ts` + `src/container-mounts.ts` | Secrets passed via stdin JSON (not written to files in container), OAuth token sync, container logs redacted |
+| `src/container-runner.ts` + `src/container-mounts.ts` | Secrets passed via stdin JSON (not written to files in container), OAuth credentials bind-mounted from host, container logs redacted |
 | `src/router.ts` | `redactSecrets()` applied in `routeOutbound()` before channel delivery |
 | `src/index.ts` | `loadSecrets()` called at startup |
 | `src/container-runtime.ts` | Container resource limits: `--cpus=2`, `--memory=4g`, `--pids-limit=256` (prevents fork bombs and runaway agents) |
@@ -252,6 +254,8 @@ Upstream passes secrets via environment variables, which are visible to `env` an
 3. Security hooks block Bash commands and Read tool calls that try to access `/proc/*/environ` or `/tmp/input.json`
 4. Agent output is scrubbed for leaked secret values before routing to the user
 5. **Outbound redaction** (`src/secret-redact.ts`) — reads ALL `.env` values at startup and strips them from outbound messages and container log files. Auto-detects secrets (no hardcoded list) — only a small safe-list of non-secret config vars like `ASSISTANT_NAME` and `CLAUDE_MODEL` is exempted
+6. **OAuth credentials bind-mounted** (`src/container-mounts.ts`) — host `~/.claude/.credentials.json` is bind-mounted directly into containers rather than copied at spawn time, so token refreshes on the host are immediately visible to running containers
+7. **Auth error detection** (`src/orchestrator.ts`) — authentication failures (expired tokens, invalid API keys) are detected by pattern matching and immediately surfaced to the user with a specific `[Auth Error]` message, even mid-conversation when other output has already been sent
 
 ### What's protected
 
@@ -632,7 +636,7 @@ The `nanoclaw-update` skill was rewritten with three key changes:
 
 ## 15. Agent Teams & Per-Group Agent Definitions
 
-Persistent, role-based agent definitions that the lead agent can spawn via the SDK's Agent Teams feature. Each group can have specialized agents (research, dev, coordinator, etc.) defined as files — no core code changes needed.
+Persistent, role-based agent definitions auto-discovered by the agent-runner and registered as SDK `subagent_type` options. Each group can have specialized agents (research, dev, coordinator, etc.) defined as files — no core code changes needed to add agents.
 
 ### Agent definitions
 
@@ -640,10 +644,21 @@ Agents are defined as files under `groups/{folder}/agents/{name}/`:
 
 | File | Purpose |
 |------|---------|
+| `agent.json` | Required config — description, model, maxTurns (discovery marker) |
 | `IDENTITY.md` | Agent personality — who it is, its expertise |
 | `CLAUDE.md` | Agent instructions — capabilities, tools, communication rules |
 
-The lead agent reads these definitions and passes them to `TeamCreate` when spawning subagents. The group's CLAUDE.md gets an "Available Agents" section listing all defined agents with usage instructions.
+The agent-runner scans `/workspace/group/agents/*/agent.json` at container startup and passes them to the SDK's `query()` as the `agents` option. The SDK registers them as `subagent_type` values on the Task tool. Agents can be spawned foreground or background (`run_in_background: true`).
+
+### SDK integration
+
+The `discoverAgents()` function in the agent-runner:
+1. Scans agent directories for `agent.json` (required — directories without it are skipped)
+2. Reads `IDENTITY.md` (required) and `CLAUDE.md` (optional) to build the agent prompt
+3. Maps `agent.json` fields to `AgentDefinition`: `description`, `model` (haiku/sonnet/opus/inherit), `maxTurns`
+4. Returns `Record<string, AgentDefinition>` keyed by directory name (e.g., `"research"`)
+
+The existing `task_notification` heartbeat resets the host idle timer when background agents complete, preventing premature container termination. Groups without agent directories are unaffected — the `agents` option is omitted from `query()`.
 
 ### WhatsApp sender display
 
@@ -660,7 +675,7 @@ This gives each subagent a visible identity without needing multiple phone numbe
 
 | Skill | Purpose |
 |-------|---------|
-| `nanoclaw-add-agent` | Guided flow to create agent definitions for a group |
+| `nanoclaw-add-agent` | Guided flow to create agent definitions (including `agent.json`) for a group |
 
 ### Updated skills
 
@@ -674,6 +689,8 @@ This gives each subagent a visible identity without needing multiple phone numbe
 
 | File | Change |
 |------|--------|
+| `container/agent-runner/src/index.ts` | Agent auto-discovery via `discoverAgents()`, wired into `query()` |
+| `groups/main/CLAUDE.md` | Simplified Agent Teams section for SDK-native `subagent_type` |
 | `plugins/channels/whatsapp/index.js` | Sender prefix display in `sendMessage` |
 | `.claude/skills/add-channel-whatsapp/files/index.js` | Same change in template |
 | `plugins/channels/whatsapp/container-skills/SKILL.md` | Agent Teams documentation for agents |
