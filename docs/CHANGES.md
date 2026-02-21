@@ -19,7 +19,10 @@ This document describes all changes made in this fork compared to the upstream [
 9. [Documentation](#9-documentation) — Plugin guides, channel plugin architecture
 10. [Code Quality & Refactoring](#10-code-quality--refactoring) — Module decomposition, dead code removal
 11. [Minor Improvements](#11-minor-improvements) — Typing indicators, read receipts
-12. [Agent Identity System](#12-agent-identity-system) — IDENTITY.md personality support
+12. [Admin Dashboard](#12-admin-dashboard) — Web UI for monitoring and management
+13. [Agent Identity System](#13-agent-identity-system) — IDENTITY.md personality support
+14. [Plugin Versioning & Update System](#14-plugin-versioning--update-system) — Semver tracking, fork-based updates
+15. [Agent Teams & Per-Group Agent Definitions](#15-agent-teams--per-group-agent-definitions) — Persistent subagent roles, WhatsApp sender display
 
 ---
 
@@ -45,6 +48,7 @@ Plugins live in `plugins/` with a `plugin.json` manifest. Skill plugin example:
 {
   "name": "brave-search",
   "description": "Web search via Brave Search API",
+  "version": "1.0.0",
   "containerEnvVars": ["BRAVE_API_KEY"],
   "hooks": []
 }
@@ -56,6 +60,7 @@ Channel plugin example:
 {
   "name": "whatsapp",
   "description": "WhatsApp via Baileys",
+  "version": "1.0.0",
   "hooks": ["onChannel"],
   "channelPlugin": true,
   "dependencies": true
@@ -342,11 +347,11 @@ These are clean fixes submitted to upstream. If they merge, the divergences coll
 
 ---
 
-## 8. New Skills (26)
+## 8. New Skills (28)
 
 Claude Code skills (`.claude/skills/`) that guide the AI through installing integrations. Each skill creates a plugin directory with manifest, code, and container-side instructions.
 
-### Integration skills (19)
+### Integration skills (20)
 
 | Skill | What it adds |
 |-------|-------------|
@@ -355,6 +360,7 @@ Claude Code skills (`.claude/skills/`) that guide the AI through installing inte
 | `add-skill-changedetection` | changedetection.io website monitoring |
 | `add-skill-claude-mem` | Persistent cross-session memory for agents |
 | `add-skill-commute` | Travel times via Waze API |
+| `add-skill-dashboard` | Admin dashboard — web UI for monitoring and management (see [§12](#12-admin-dashboard)) |
 | `add-skill-freshrss` | Self-hosted RSS feed reader |
 | `add-skill-github` | GitHub API access (PRs, issues, commits) |
 | `add-skill-gmail` | Gmail access via gog CLI (search, read, send) |
@@ -380,7 +386,7 @@ Claude Code skills (`.claude/skills/`) that guide the AI through installing inte
 | `add-channel-telegram` | Install Telegram as a channel plugin |
 | `nanoclaw-add-group` | Generic skill to register a group on any installed channel |
 
-### Meta skills (7)
+### Meta skills (8)
 
 | Skill | What it does |
 |-------|-------------|
@@ -390,6 +396,7 @@ Claude Code skills (`.claude/skills/`) that guide the AI through installing inte
 | `create-skill-plugin` | Guided creation of new skill plugins from an idea (includes scoping guidance for sensitive plugins) |
 | `create-channel-plugin` | Guided creation of new channel plugins (includes container-skills template for capability awareness) |
 | `nanoclaw-update` | Manage upstream sync with selective cherry-pick |
+| `nanoclaw-add-agent` | Guided creation of persistent agent definitions for groups (Agent Teams) |
 | `nanoclaw-security-audit` | Pre-installation security audit of skill plugins — purpose-based threat evaluation across 8 attack vectors |
 
 ### Rewritten upstream skills
@@ -502,7 +509,59 @@ This Fork:
 
 ---
 
-## 12. Agent Identity System
+## 12. Admin Dashboard
+
+A server-rendered web UI for monitoring system health, managing scheduled tasks, viewing messages, and inspecting groups. Runs as an optional plugin with htmx for live partial updates, Tailwind CSS for styling, and bearer token auth for security.
+
+### What it provides
+
+| Section | Description |
+|---------|-------------|
+| **Health bar** | Uptime, memory usage, Node version, PID |
+| **Identity** | Safe env vars (`ASSISTANT_NAME`, `TZ`, etc.), IDENTITY.md, global CLAUDE.md |
+| **Channels** | Connection status per channel (green/red indicators) |
+| **Queue** | Active container count, per-group state with pending/retry badges |
+| **Recent Runs** | Last 15 task executions with duration and status |
+| **Groups** | Registered groups table with detail view (CLAUDE.md, MEMORY.md, media size) |
+| **Tasks** | Scheduled task management — pause/resume, delete, run now, view run logs |
+| **Create Task** | Form to create new scheduled tasks |
+| **Plugins** | Installed plugins with type/scope badges, uninstalled templates |
+| **Messages** | Per-group recent message viewer |
+| **Send Message** | Send a message to any registered group |
+| **System Logs** | Live tail of `nanoclaw.log` (last 64KB, 100 lines) |
+| **Dark/Light toggle** | Theme toggle with localStorage persistence |
+
+### Core code changes (4 files, ~100 lines added)
+
+The dashboard extends PluginContext with read-only monitoring and task management APIs. All changes are purely additive — no existing lines modified.
+
+| File | What was added |
+|------|---------------|
+| `src/plugin-types.ts` | 28 lines — monitoring, task CRUD, and message query methods on `PluginContext` interface |
+| `src/index.ts` | 32 lines — wiring the new methods to existing orchestrator/db/queue/plugin-loader functions |
+| `src/group-queue.ts` | 15 lines — `getStatus()` method exposing per-group queue state |
+| `src/db.ts` | 12 lines — `getTaskRunLogs()` and `getRecentMessages()` query functions (parameterized SQL) |
+
+### Security
+
+- **Bearer token auth** via `DASHBOARD_SECRET` env var (cookie + header + query param)
+- **XSS protection** — all dynamic content HTML-escaped including single quotes
+- **Input validation** — task status/schedule_type allowlisted, JID validated against registered groups
+- **No direct DB access** — all data flows through PluginContext methods
+- **Bind to localhost by default** — exposed via socat bridge for VPN access
+
+### Plugin files
+
+| File | Purpose |
+|------|---------|
+| `plugins/dashboard/plugin.json` | Manifest: `onStartup`/`onShutdown` hooks |
+| `plugins/dashboard/index.js` (900 lines) | HTTP server, auth middleware, route handlers, HTML renderers |
+| `.claude/skills/add-skill-dashboard/SKILL.md` | Installation instructions |
+| `.claude/skills/add-skill-dashboard/files/` | Template files copied on install |
+
+---
+
+## 13. Agent Identity System
 
 Agents can now have a personality via `IDENTITY.md` files, inspired by OpenClaw's SOUL.md philosophy.
 
@@ -529,6 +588,97 @@ The `nanoclaw-add-group` skill now offers optional per-group personality customi
 
 ---
 
+## 14. Plugin Versioning & Update System
+
+All plugins now include a `"version"` field in their `plugin.json` manifest (semver format, e.g. `"1.0.0"`). This enables the update skill to detect when skill templates have newer versions than installed plugins.
+
+### What was added
+
+| Change | Details |
+|--------|---------|
+| **Version field** | `"version": "1.0.0"` added to all 47 plugin.json files (21 installed plugins, 25 skill templates, 1 channel plugin) |
+| **Create-plugin templates** | `create-skill-plugin` and `create-channel-plugin` SKILL.md files updated — all archetype templates and the schema reference now include `"version"` |
+| **Update skill rework** | `nanoclaw-update` completely rewritten for fork-based workflow with plugin version detection |
+
+### How plugin versioning works
+
+- Each `plugin.json` has a `"version": "1.0.0"` field
+- Skill templates under `.claude/skills/add-*/files/` are the "source of truth" for the latest version
+- Installed plugins under `plugins/` may lag behind if the user hasn't re-run the installer
+- The `/nanoclaw-update` skill compares template versions vs installed versions after fetching fork updates
+
+### Update skill rework
+
+The `nanoclaw-update` skill was rewritten with three key changes:
+
+1. **Fork-based**: pulls from `nanoclaw` remote (`TerrifiedBug/nanoclaw`) instead of `upstream` (`qwibitai/nanoclaw`), since nanotars tracks the fork
+2. **Fetch-then-assess**: fetches first, then shows a combined preview of core code changes AND plugin version differences before asking whether to proceed — the user sees everything that would change before committing to the merge
+3. **Plugin update flow**: after merge, compares template versions vs installed plugins, offers to update outdated plugins while preserving user's group/channel scoping
+
+### Files modified
+
+| File | Change |
+|------|--------|
+| `plugins/*/plugin.json` (21 files) | Added `"version": "1.0.0"` |
+| `plugins/channels/whatsapp/plugin.json` | Added `"version": "1.0.0"` |
+| `.claude/skills/add-*/files/plugin.json` (25 files) | Added `"version": "1.0.0"` |
+| `.claude/skills/create-skill-plugin/SKILL.md` | Added `"version"` to all 4 archetype templates + schema reference |
+| `.claude/skills/create-channel-plugin/SKILL.md` | Added `"version"` to channel plugin template |
+| `.claude/skills/nanoclaw-update/SKILL.md` | Complete rewrite: fork remote, fetch-then-assess, plugin version check |
+
+---
+
+## 15. Agent Teams & Per-Group Agent Definitions
+
+Persistent, role-based agent definitions that the lead agent can spawn via the SDK's Agent Teams feature. Each group can have specialized agents (research, dev, coordinator, etc.) defined as files — no core code changes needed.
+
+### Agent definitions
+
+Agents are defined as files under `groups/{folder}/agents/{name}/`:
+
+| File | Purpose |
+|------|---------|
+| `IDENTITY.md` | Agent personality — who it is, its expertise |
+| `CLAUDE.md` | Agent instructions — capabilities, tools, communication rules |
+
+The lead agent reads these definitions and passes them to `TeamCreate` when spawning subagents. The group's CLAUDE.md gets an "Available Agents" section listing all defined agents with usage instructions.
+
+### WhatsApp sender display
+
+When subagents specify a `sender` parameter via `send_message`, WhatsApp now displays it as a bold name prefix:
+
+```
+TARS: *Research Specialist*
+Here's what I found about coral reefs...
+```
+
+This gives each subagent a visible identity without needing multiple phone numbers (unlike Telegram's bot pool approach). The change is in `sendMessage()` — if `sender` is provided and differs from `assistantName`, the message is prefixed with `*{sender}*\n`.
+
+### New skill
+
+| Skill | Purpose |
+|-------|---------|
+| `nanoclaw-add-agent` | Guided flow to create agent definitions for a group |
+
+### Updated skills
+
+| Skill | Change |
+|-------|--------|
+| `add-channel-whatsapp` | Documents Agent Teams support (no setup needed) |
+| `nanoclaw-add-group` | Mentions `/nanoclaw-add-agent` after group registration |
+| `create-channel-plugin` | Added sender parameter guidance for new channels |
+
+### Files modified
+
+| File | Change |
+|------|--------|
+| `plugins/channels/whatsapp/index.js` | Sender prefix display in `sendMessage` |
+| `.claude/skills/add-channel-whatsapp/files/index.js` | Same change in template |
+| `plugins/channels/whatsapp/container-skills/SKILL.md` | Agent Teams documentation for agents |
+| `.claude/skills/add-channel-whatsapp/files/container-skills/SKILL.md` | Same in template |
+
+---
+
 ### Key architectural differences
 
 | Aspect | Upstream | This Fork |
@@ -541,4 +691,5 @@ The `nanoclaw-add-group` skill now offers optional per-group personality customi
 | Security | Trust-based (one user) | Defense-in-depth (secret isolation, Bash hooks, IPC auth, resource limits, path traversal defense, pre-install security audits) |
 | Setup | Shell scripts hardcoding WhatsApp | Channel-agnostic SKILL.md with plugin detection |
 | Scheduled tasks | Single model, silent failures | Per-task model selection, error notifications, atomic claiming |
+| Updates | Manual `git pull` from upstream | Fetch-then-assess from fork with plugin version comparison |
 

@@ -224,6 +224,7 @@ This is how the agent knows whether to attempt `send_file` or fall back to inlin
 {
   "name": "{name}",
   "description": "{Platform} channel via {library}",
+  "version": "1.0.0",
   "hooks": ["onChannel"],
   "channelPlugin": true,
   "dependencies": true,
@@ -357,6 +358,14 @@ export async function onChannel(ctx, config) {
 5. **Bot Message Detection**: Set `is_bot_message: true` for messages the bot itself sent. How this is detected varies by platform.
 
 6. **Assistant Name Prefix**: Most platforms display bot names already (Telegram, Discord, Slack). WhatsApp is special because it shares a phone number, so it prefixes `AssistantName: `. New channels typically do NOT need this prefix.
+
+   **Agent Teams / Sender Identity**: The `sender` parameter on `sendMessage` carries a subagent's identity name (e.g., "Research Specialist"). How to handle it depends on the platform:
+   - **Telegram**: Uses a bot pool — each sender gets a dedicated bot that's renamed to match the role. Messages appear from different bot identities.
+   - **WhatsApp**: Prefixes the message with `*{sender}*\n` in bold, since all messages come from one phone number.
+   - **Discord/Slack**: Could use webhook display names to show different identities.
+   - **Simple channels**: Can ignore the `sender` parameter entirely — it's optional.
+
+   Choose whichever approach is natural for the platform. Document the behavior in the channel's `container-skills/SKILL.md` so agents know how their identity will appear.
 
 7. **Media Download** (optional but recommended): When your channel receives images, voice notes, videos, or documents, download the media using the platform SDK, save to `groups/{folder}/media/`, and set the three media fields on the message:
    ```javascript
