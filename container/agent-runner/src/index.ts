@@ -381,6 +381,7 @@ interface AgentConfig {
   description: string;
   model?: 'sonnet' | 'opus' | 'haiku' | 'inherit';
   maxTurns?: number;
+  disallowedTools?: string[];
 }
 
 interface AgentDefinition {
@@ -388,6 +389,7 @@ interface AgentDefinition {
   prompt: string;
   model?: 'sonnet' | 'opus' | 'haiku' | 'inherit';
   maxTurns?: number;
+  disallowedTools?: string[];
 }
 
 function discoverAgents(): Record<string, AgentDefinition> {
@@ -434,6 +436,7 @@ function discoverAgents(): Record<string, AgentDefinition> {
       prompt,
       ...(config.model ? { model: config.model } : {}),
       ...(config.maxTurns ? { maxTurns: config.maxTurns } : {}),
+      ...(config.disallowedTools?.length ? { disallowedTools: config.disallowedTools } : {}),
     };
   }
 
@@ -549,8 +552,9 @@ async function runQuery(
     mergedHooks.PreToolUse.push({
       matcher: 'Task',
       hooks: [async (input) => {
-        const taskInput = input as { subagent_type?: string; run_in_background?: boolean };
-        if (taskInput.subagent_type && agentNames.has(taskInput.subagent_type) && !taskInput.run_in_background) {
+        const hookInput = input as { tool_input?: { subagent_type?: string; run_in_background?: boolean } };
+        const taskInput = hookInput.tool_input;
+        if (taskInput?.subagent_type && agentNames.has(taskInput.subagent_type) && !taskInput.run_in_background) {
           log(`Forcing run_in_background for agent: ${taskInput.subagent_type}`);
           return { updatedInput: { ...taskInput, run_in_background: true } };
         }

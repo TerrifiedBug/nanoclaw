@@ -124,6 +124,13 @@ Options (multi-select):
 4. **Communication** — Send messages to the chat, coordinate with teammates
 5. **All capabilities** — Full access to everything the lead agent can do
 
+Based on the capabilities NOT selected, build a `disallowedTools` list:
+- Missing "Code & development" → add `Write`, `Edit`, `Bash`
+- Missing "File management" → add `Write`, `Edit`
+- Missing "Web search & research" → add `WebSearch`, `WebFetch`
+- "All capabilities" selected → no restrictions (omit `disallowedTools`)
+- Always disallow `NotebookEdit` unless "Code & development" is selected
+
 Then ask:
 
 > "What model should this agent use?"
@@ -154,14 +161,16 @@ Create the agent directory and files:
 mkdir -p groups/{folder}/agents/{name}
 ```
 
-**agent.json** — Write based on the description from Step 4 and model choice:
+**agent.json** — Write based on the description from Step 4, model choice, and disallowed tools:
 ```json
 {
   "description": "<one-line action-oriented description from Step 4>",
   "model": "<model choice from Step 4>",
-  "maxTurns": 30
+  "maxTurns": 30,
+  "disallowedTools": ["<tools not needed based on capabilities from Step 4>"]
 }
 ```
+Omit `disallowedTools` entirely if "All capabilities" was selected.
 
 **IDENTITY.md** — Write based on the role description from Step 4. Keep it concise — 3-5 sentences that define who this agent is.
 

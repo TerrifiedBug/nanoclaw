@@ -1,5 +1,6 @@
 {
   "description": "Research specialist for web search, information gathering, and synthesis",
   "model": "sonnet",
-  "maxTurns": 30
+  "maxTurns": 30,
+  "disallowedTools": ["Write", "Edit", "NotebookEdit"]
 }

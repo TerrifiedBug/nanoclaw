@@ -1,5 +1,6 @@
 {
   "description": "Writer and editor for crafting clear content and summarizing complex topics",
   "model": "haiku",
-  "maxTurns": 20
+  "maxTurns": 20,
+  "disallowedTools": ["Bash", "NotebookEdit"]
 }
