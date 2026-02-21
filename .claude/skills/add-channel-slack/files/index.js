@@ -126,7 +126,7 @@ class SlackChannel {
       }
     }
 
-    // Handle file attachments
+    // Handle file uploads (direct file shares)
     let mediaType, mediaPath, mediaHostPath;
     if (message.files?.length > 0) {
       const file = message.files[0];
@@ -141,6 +141,44 @@ class SlackChannel {
       } else if (!content) {
         const type = file.mimetype?.split('/')[0] || 'file';
         content = `[${type}: download failed]`;
+      }
+    }
+
+    // Handle attachments (GIF picker, unfurled images)
+    // Slack's GIF picker sends images as attachments with nested image blocks
+    if (!mediaType && message.attachments?.length > 0) {
+      for (const att of message.attachments) {
+        // Check for image blocks inside the attachment (GIF picker format)
+        const imageBlock = att.blocks?.find(b => b.type === 'image' && b.image_url);
+        if (imageBlock) {
+          const media = await this.downloadAttachmentImage(
+            imageBlock.image_url, imageBlock.alt_text, group.folder, message.ts,
+          );
+          if (media) {
+            mediaType = media.type;
+            mediaPath = media.path;
+            mediaHostPath = media.hostPath;
+            content = content
+              ? `${content}\n[${media.type}: ${media.path}]`
+              : `[${media.type}: ${media.path}]`;
+          }
+          break;
+        }
+        // Check for top-level image_url (unfurled links)
+        if (att.image_url) {
+          const media = await this.downloadAttachmentImage(
+            att.image_url, att.fallback, group.folder, message.ts,
+          );
+          if (media) {
+            mediaType = media.type;
+            mediaPath = media.path;
+            mediaHostPath = media.hostPath;
+            content = content
+              ? `${content}\n[${media.type}: ${media.path}]`
+              : `[${media.type}: ${media.path}]`;
+          }
+          break;
+        }
       }
     }
 
@@ -162,6 +200,50 @@ class SlackChannel {
     });
 
     this.logger.info({ chatJid, sender: senderName }, 'Slack message received');
+  }
+
+  /** @private — Download image from an attachment URL (GIF picker, unfurled links) */
+  async downloadAttachmentImage(url, altText, groupFolder, messageTs) {
+    const mediaDir = path.join(this.config.paths.groupsDir, groupFolder, 'media');
+    fs.mkdirSync(mediaDir, { recursive: true });
+
+    // Determine extension from URL
+    const urlPath = new URL(url).pathname;
+    const ext = urlPath.split('.').pop()?.toLowerCase() || 'gif';
+    const safeTs = messageTs.replace('.', '-');
+    const filename = `${safeTs}.${ext}`;
+    const filePath = path.join(mediaDir, filename);
+
+    try {
+      const buffer = await this.fetchPublic(url);
+      fs.writeFileSync(filePath, buffer);
+      this.logger.info({ groupFolder, filename, altText }, 'Slack attachment image downloaded');
+      return { path: `/workspace/group/media/${filename}`, hostPath: filePath, type: 'image' };
+    } catch (err) {
+      this.logger.warn({ err: err.message, url }, 'Failed to download attachment image');
+      return null;
+    }
+  }
+
+  /** @private — Fetch a public URL (no auth header, for CDN images like tenor/giphy) */
+  async fetchPublic(url) {
+    return new Promise((resolve, reject) => {
+      https.get(url, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          this.fetchPublic(res.headers.location).then(resolve, reject);
+          res.resume();
+          return;
+        }
+        if (res.statusCode !== 200) {
+          reject(new Error(`HTTP ${res.statusCode}`));
+          res.resume();
+          return;
+        }
+        const chunks = [];
+        res.on('data', (chunk) => chunks.push(chunk));
+        res.on('end', () => resolve(Buffer.concat(chunks)));
+      }).on('error', reject);
+    });
   }
 
   /** @private */

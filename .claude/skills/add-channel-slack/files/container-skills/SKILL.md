@@ -8,6 +8,8 @@ You can send files to the user using `mcp__nanoclaw__send_file`. Save the file t
 
 Supported: images (jpg, png, gif, webp), videos (mp4), audio (mp3, ogg), documents (pdf, doc, txt, csv, json, zip). Maximum 64 MB.
 
+**GIFs:** Slack displays animated GIFs natively — send GIF format directly (not MP4). When using GIF search results, prefer the `gif_url` over `mp4_url`.
+
 Use this when:
 - The user asks for generated content (charts, reports, exports, spreadsheets)
 - Sharing a file is more useful than pasting text inline
