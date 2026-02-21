@@ -375,6 +375,78 @@ function waitForIpcMessage(): Promise<string | null> {
   });
 }
 
+const AGENTS_DIR = '/workspace/group/agents';
+
+interface AgentConfig {
+  description: string;
+  model?: 'sonnet' | 'opus' | 'haiku' | 'inherit';
+  maxTurns?: number;
+  disallowedTools?: string[];
+}
+
+interface AgentDefinition {
+  description: string;
+  prompt: string;
+  model?: 'sonnet' | 'opus' | 'haiku' | 'inherit';
+  maxTurns?: number;
+  disallowedTools?: string[];
+}
+
+function discoverAgents(): Record<string, AgentDefinition> {
+  const agents: Record<string, AgentDefinition> = {};
+
+  if (!fs.existsSync(AGENTS_DIR)) return agents;
+
+  for (const entry of fs.readdirSync(AGENTS_DIR)) {
+    const agentDir = path.join(AGENTS_DIR, entry);
+    if (!fs.statSync(agentDir).isDirectory()) continue;
+
+    const configPath = path.join(agentDir, 'agent.json');
+    if (!fs.existsSync(configPath)) continue;
+
+    let config: AgentConfig;
+    try {
+      config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    } catch (err) {
+      log(`Failed to parse ${configPath}: ${err instanceof Error ? err.message : String(err)}`);
+      continue;
+    }
+
+    if (!config.description) {
+      log(`Agent ${entry}: missing description in agent.json, skipping`);
+      continue;
+    }
+
+    const identityPath = path.join(agentDir, 'IDENTITY.md');
+    if (!fs.existsSync(identityPath)) {
+      log(`Agent ${entry}: missing IDENTITY.md, skipping`);
+      continue;
+    }
+
+    const identity = fs.readFileSync(identityPath, 'utf-8');
+    const claudeMdPath = path.join(agentDir, 'CLAUDE.md');
+    const claudeMd = fs.existsSync(claudeMdPath)
+      ? fs.readFileSync(claudeMdPath, 'utf-8')
+      : undefined;
+
+    const prompt = claudeMd ? `${identity}\n\n${claudeMd}` : identity;
+
+    agents[entry] = {
+      description: config.description,
+      prompt,
+      ...(config.model ? { model: config.model } : {}),
+      ...(config.maxTurns ? { maxTurns: config.maxTurns } : {}),
+      ...(config.disallowedTools?.length ? { disallowedTools: config.disallowedTools } : {}),
+    };
+  }
+
+  if (Object.keys(agents).length > 0) {
+    log(`Discovered agents: ${Object.keys(agents).join(', ')}`);
+  }
+
+  return agents;
+}
+
 /**
  * Run a single query and stream results via writeOutput.
  * Uses MessageStream (AsyncIterable) to keep isSingleUserTurn=false,
@@ -418,13 +490,14 @@ async function runQuery(
   let messageCount = 0;
   let resultCount = 0;
 
-  // Load identity — per-group override or global fallback (applies to ALL groups)
+  // Load identity — per-group override or global fallback
+  let identity: string | undefined;
   const groupIdentityPath = '/workspace/group/IDENTITY.md';
   const globalIdentityPath = '/workspace/global/IDENTITY.md';
   const identityPath = fs.existsSync(groupIdentityPath)
     ? groupIdentityPath
     : globalIdentityPath;
-  const identity = fs.existsSync(identityPath)
+  identity = fs.existsSync(identityPath)
     ? fs.readFileSync(identityPath, 'utf-8')
     : undefined;
 
@@ -435,7 +508,7 @@ async function runQuery(
     globalClaudeMd = fs.readFileSync(globalClaudeMdPath, 'utf-8');
   }
 
-  // Combine: identity first, then functional instructions
+  // Combine: identity first, then global instructions
   const systemAppend = [identity, globalClaudeMd].filter(Boolean).join('\n\n');
 
   // Discover additional directories mounted at /workspace/extra/*
@@ -468,6 +541,26 @@ async function runQuery(
   for (const [event, entries] of Object.entries(pluginHooks)) {
     if (!mergedHooks[event]) mergedHooks[event] = [];
     mergedHooks[event].push(...entries);
+  }
+
+  // Discover per-group agent definitions
+  const agents = discoverAgents();
+  const agentNames = new Set(Object.keys(agents));
+
+  // Force discovered agents to always run in background so the lead agent stays responsive
+  if (agentNames.size > 0) {
+    mergedHooks.PreToolUse.push({
+      matcher: 'Task',
+      hooks: [async (input) => {
+        const hookInput = input as { tool_input?: { subagent_type?: string; run_in_background?: boolean } };
+        const taskInput = hookInput.tool_input;
+        if (taskInput?.subagent_type && agentNames.has(taskInput.subagent_type) && !taskInput.run_in_background) {
+          log(`Forcing run_in_background for agent: ${taskInput.subagent_type}`);
+          return { updatedInput: { ...taskInput, run_in_background: true } };
+        }
+        return {};
+      }],
+    });
   }
 
   for await (const message of query({
@@ -507,6 +600,7 @@ async function runQuery(
         },
       },
       hooks: mergedHooks,
+      ...(Object.keys(agents).length > 0 ? { agents } : {}),
     }
   })) {
     messageCount++;
@@ -525,6 +619,8 @@ async function runQuery(
     if (message.type === 'system' && (message as { subtype?: string }).subtype === 'task_notification') {
       const tn = message as { task_id: string; status: string; summary: string };
       log(`Task notification: task=${tn.task_id} status=${tn.status} summary=${tn.summary}`);
+      // Heartbeat: reset host idle timer so containers with background tasks don't get killed
+      writeOutput({ status: 'success', result: null, newSessionId, resumeAt: lastAssistantUuid });
     }
 
     if (message.type === 'result') {

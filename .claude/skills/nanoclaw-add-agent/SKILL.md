@@ -1,14 +1,14 @@
 ---
 name: nanoclaw-add-agent
 description: >
-  Add a persistent agent definition to a group. Creates IDENTITY.md and CLAUDE.md files
-  for a specialized subagent that the lead agent can spawn via Agent Teams.
+  Add a persistent agent definition to a group. Creates agent.json, IDENTITY.md, and CLAUDE.md
+  files for a specialized subagent auto-discovered by the SDK via Agent Teams.
   Triggers on "add agent", "create agent", "new agent", "agent team", "add subagent".
 ---
 
 # Add Agent to Group
 
-This skill creates persistent agent definitions for NanoClaw groups. Each agent gets an identity and instruction set that the lead agent reads and passes to `TeamCreate` when spawning subagents via Agent Teams.
+This skill creates persistent agent definitions for NanoClaw groups. Each agent gets a configuration file (`agent.json`) plus identity and instructions that the agent-runner auto-discovers and registers as SDK `subagent_type` options via Agent Teams.
 
 Agent definitions are just files — no core code changes, no database changes.
 
@@ -18,11 +18,12 @@ Agent definitions are just files — no core code changes, no database changes.
 groups/{folder}/
   agents/
     {name}/
+      agent.json     ← REQUIRED: description, model, maxTurns (discovery marker)
       IDENTITY.md    ← "You are a research specialist..."
       CLAUDE.md      ← capabilities, rules, tools to focus on
 ```
 
-The lead agent reads these files and uses them when creating teammates. Subagent memory lives in the group's session (SDK-managed).
+The agent-runner auto-discovers agents by scanning for `agent.json` files and registers them as SDK subagent types. The lead agent sees them as `subagent_type` options on the Task tool.
 
 ## Workflow
 
@@ -46,13 +47,13 @@ Discover the full picture — what's installed in this group vs what templates a
 
 ```bash
 # Installed agents in this group (already active)
-ls -d groups/{folder}/agents/*/IDENTITY.md 2>/dev/null
+ls -d groups/{folder}/agents/*/agent.json 2>/dev/null
 
 # Available pre-built templates (not yet installed)
-ls -d .claude/skills/nanoclaw-add-agent/agents/*/IDENTITY.md 2>/dev/null
+ls -d .claude/skills/nanoclaw-add-agent/agents/*/agent.json 2>/dev/null
 ```
 
-For each entry found, read the first line of its IDENTITY.md to get a one-line description.
+For each entry found, read the description from its `agent.json`.
 
 Compare the two lists: a template is "available" only if its name does NOT already exist in `groups/{folder}/agents/`. Present both lists clearly:
 
@@ -123,6 +124,23 @@ Options (multi-select):
 4. **Communication** — Send messages to the chat, coordinate with teammates
 5. **All capabilities** — Full access to everything the lead agent can do
 
+Based on the capabilities NOT selected, build a `disallowedTools` list:
+- Missing "Code & development" → add `Write`, `Edit`, `Bash`
+- Missing "File management" → add `Write`, `Edit`
+- Missing "Web search & research" → add `WebSearch`, `WebFetch`
+- "All capabilities" selected → no restrictions (omit `disallowedTools`)
+- Always disallow `NotebookEdit` unless "Code & development" is selected
+
+Then ask:
+
+> "What model should this agent use?"
+>
+> Options:
+> 1. **haiku** — Fast and cheap, good for research and simple tasks (Recommended)
+> 2. **sonnet** — Balanced, good for coding and complex reasoning
+> 3. **opus** — Most capable, good for difficult tasks
+> 4. **inherit** — Use the same model as the lead agent
+
 ### Step 5: Generate Agent Files
 
 #### If using a pre-built template
@@ -130,7 +148,7 @@ Options (multi-select):
 The files were already copied in Step 2. Verify they're in place:
 
 ```bash
-ls groups/{folder}/agents/{name}/IDENTITY.md groups/{folder}/agents/{name}/CLAUDE.md
+ls groups/{folder}/agents/{name}/agent.json groups/{folder}/agents/{name}/IDENTITY.md groups/{folder}/agents/{name}/CLAUDE.md
 ```
 
 If the user renamed the agent, update the `sender` value in CLAUDE.md to match the new name.
@@ -142,6 +160,17 @@ Create the agent directory and files:
 ```bash
 mkdir -p groups/{folder}/agents/{name}
 ```
+
+**agent.json** — Write based on the description from Step 4, model choice, and disallowed tools:
+```json
+{
+  "description": "<one-line action-oriented description from Step 4>",
+  "model": "<model choice from Step 4>",
+  "maxTurns": 30,
+  "disallowedTools": ["<tools not needed based on capabilities from Step 4>"]
+}
+```
+Omit `disallowedTools` entirely if "All capabilities" was selected.
 
 **IDENTITY.md** — Write based on the role description from Step 4. Keep it concise — 3-5 sentences that define who this agent is.
 
@@ -165,9 +194,10 @@ Tell the user:
 
 > "Done! Created the `{name}` agent in `groups/{folder}/agents/{name}/`.
 >
-> The lead agent discovers agents automatically by scanning `/workspace/group/agents/` at runtime. No restart needed.
+> The agent-runner discovers agents automatically by scanning for `agent.json` files at container startup. No restart needed.
 >
 > Files created:
+> - `groups/{folder}/agents/{name}/agent.json` — Agent configuration
 > - `groups/{folder}/agents/{name}/IDENTITY.md` — Agent personality
 > - `groups/{folder}/agents/{name}/CLAUDE.md` — Agent instructions"
 
@@ -179,8 +209,10 @@ If the user asks to list agents, scan:
 for agent_dir in groups/*/agents/*/; do
   folder=$(echo "$agent_dir" | cut -d/ -f2)
   name=$(echo "$agent_dir" | cut -d/ -f4)
-  role=$(head -1 "$agent_dir/IDENTITY.md" 2>/dev/null || echo "No identity")
-  echo "$folder/$name: $role"
+  if [ -f "${agent_dir}agent.json" ]; then
+    desc=$(python3 -c "import json; print(json.load(open('${agent_dir}agent.json'))['description'])" 2>/dev/null || echo "No description")
+    echo "$folder/$name: $desc"
+  fi
 done
 ```
 
@@ -198,6 +230,7 @@ To add a new pre-built agent template, create a directory under `.claude/skills/
 
 ```
 .claude/skills/nanoclaw-add-agent/agents/{name}/
+  agent.json     ← REQUIRED: description, model, maxTurns
   IDENTITY.md    ← First line should be a one-sentence summary
   CLAUDE.md      ← Instructions following the standard structure (Your Role, How to Work, Communication Rules)
 ```

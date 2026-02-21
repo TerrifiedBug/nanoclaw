@@ -215,12 +215,10 @@ export function buildVolumeMounts(
     fs.rmSync(skillsDst, { recursive: true });
   }
 
-  // Sync host credentials for automatic OAuth token refresh
-  // Claude Code SDK reads ~/.claude/.credentials.json natively and handles refresh
-  const hostCredsFile = path.join(getHomeDir(), '.claude', '.credentials.json');
-  if (fs.existsSync(hostCredsFile)) {
-    const destCredsFile = path.join(groupSessionsDir, '.credentials.json');
-    fs.copyFileSync(hostCredsFile, destCredsFile);
+  // Clean up stale credentials copy from pre-bind-mount era
+  const staleCredsFile = path.join(groupSessionsDir, '.credentials.json');
+  if (fs.existsSync(staleCredsFile)) {
+    try { fs.unlinkSync(staleCredsFile); } catch { /* non-fatal */ }
   }
 
   mounts.push({
@@ -228,6 +226,18 @@ export function buildVolumeMounts(
     containerPath: '/home/node/.claude',
     readonly: false,
   });
+
+  // Bind mount host credentials directly so containers always have the freshest token.
+  // File-level mount overlays the directory mount at this specific path.
+  // Must be read-write: the SDK needs write access to refresh tokens and update auth state.
+  const hostCredsFile = path.join(getHomeDir(), '.claude', '.credentials.json');
+  if (fs.existsSync(hostCredsFile)) {
+    mounts.push({
+      hostPath: hostCredsFile,
+      containerPath: '/home/node/.claude/.credentials.json',
+      readonly: false,
+    });
+  }
 
   // Per-group IPC namespace: each group gets its own IPC directory
   // This prevents cross-group privilege escalation via IPC

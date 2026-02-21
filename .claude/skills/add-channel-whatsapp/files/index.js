@@ -317,7 +317,7 @@ class WhatsAppChannel {
   async sendMessage(jid, text, sender, replyTo) {
     // If a subagent identity is specified, prefix with its name in bold
     const withSender = sender && sender !== this.config.assistantName
-      ? `*${sender}*\n${text}`
+      ? `*${sender}*\n━━━━━━━━━━━━━━\n${text}`
       : text;
 
     // Prefix bot messages with assistant name so users know who's speaking.

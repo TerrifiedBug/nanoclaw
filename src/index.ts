@@ -262,9 +262,9 @@ async function main(): Promise<void> {
     getResumePositions: () => orchestrator.resumePositions,
     queue,
     onProcess: (groupJid, proc, containerName, groupFolder) => queue.registerProcess(groupJid, proc, containerName, groupFolder),
-    sendMessage: async (jid, rawText) => {
+    sendMessage: async (jid, rawText, sender) => {
       const text = stripInternalTags(rawText);
-      if (text) await routeOutbound(orchestrator.channels, jid, text, undefined, undefined, plugins);
+      if (text) await routeOutbound(orchestrator.channels, jid, text, sender, undefined, plugins);
     },
   });
   startIpcWatcher({

@@ -1,0 +1,5 @@
+{
+  "description": "Software developer for writing, reviewing, and debugging code",
+  "model": "sonnet",
+  "maxTurns": 50
+}

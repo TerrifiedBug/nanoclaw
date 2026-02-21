@@ -1,0 +1,6 @@
+{
+  "description": "Project coordinator for breaking down tasks, tracking progress, and managing dependencies",
+  "model": "haiku",
+  "maxTurns": 20,
+  "disallowedTools": ["Write", "Edit", "Bash", "NotebookEdit"]
+}

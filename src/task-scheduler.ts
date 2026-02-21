@@ -21,7 +21,7 @@ import {
 } from './db.js';
 import { GroupQueue } from './group-queue.js';
 import { logger } from './logger.js';
-import { stripInternalTags } from './router.js';
+import { isAuthError, stripInternalTags } from './router.js';
 import { RegisteredGroup, ScheduledTask } from './types.js';
 
 export interface SchedulerDependencies {
@@ -30,7 +30,7 @@ export interface SchedulerDependencies {
   getResumePositions: () => Record<string, string>;
   queue: GroupQueue;
   onProcess: (groupJid: string, proc: ChildProcess, containerName: string, groupFolder: string) => void;
-  sendMessage: (jid: string, text: string) => Promise<void>;
+  sendMessage: (jid: string, text: string, sender?: string) => Promise<void>;
 }
 
 async function runTask(
@@ -164,9 +164,18 @@ async function runTask(
   // Notify user if the task failed (so they don't get silent failures)
   if (error && !hadSuccessfulResponse) {
     const taskLabel = task.prompt.split('\n')[0].slice(0, 60);
+    let errorPrefix: string;
+    let errorDetail: string;
+    if (isAuthError(error)) {
+      errorPrefix = '[Auth Error]';
+      errorDetail = 'API authentication has expired or is invalid. The admin needs to refresh the token.';
+    } else {
+      errorPrefix = '[Scheduled task failed]';
+      errorDetail = error.slice(0, 200);
+    }
     await deps.sendMessage(
       task.chat_jid,
-      `[Scheduled task failed] ${taskLabel}\nError: ${error.slice(0, 200)}`,
+      `${errorPrefix} ${taskLabel}\n${errorDetail}`,
     ).catch(() => {});
   }
 
