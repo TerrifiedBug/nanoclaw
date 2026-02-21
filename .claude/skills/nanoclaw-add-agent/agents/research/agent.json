@@ -1,5 +1,5 @@
 {
   "description": "Research specialist for web search, information gathering, and synthesis",
-  "model": "haiku",
+  "model": "sonnet",
   "maxTurns": 30
 }

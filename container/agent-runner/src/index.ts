@@ -542,6 +542,22 @@ async function runQuery(
 
   // Discover per-group agent definitions
   const agents = discoverAgents();
+  const agentNames = new Set(Object.keys(agents));
+
+  // Force discovered agents to always run in background so the lead agent stays responsive
+  if (agentNames.size > 0) {
+    mergedHooks.PreToolUse.push({
+      matcher: 'Task',
+      hooks: [async (input) => {
+        const taskInput = input as { subagent_type?: string; run_in_background?: boolean };
+        if (taskInput.subagent_type && agentNames.has(taskInput.subagent_type) && !taskInput.run_in_background) {
+          log(`Forcing run_in_background for agent: ${taskInput.subagent_type}`);
+          return { updatedInput: { ...taskInput, run_in_background: true } };
+        }
+        return {};
+      }],
+    });
+  }
 
   for await (const message of query({
     prompt: stream,
