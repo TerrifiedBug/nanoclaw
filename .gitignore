@@ -36,6 +36,9 @@ socket:*
 
 agents-sdk-docs
 
+# Internal plans
+docs/plans/
+
 # Plugins (personal config, created by skills)
 plugins/*
 !plugins/.gitkeep
