@@ -284,6 +284,10 @@ Upstream passes secrets via environment variables, which are visible to `env` an
 
 - **Read-only project root mount** — Main group's project root is now mounted read-only to prevent container escape via host code modification (port of upstream 5fb1064)
 
+### Group folder path validation
+
+- **Group folder path validation** — Added max-length (64 chars) and reserved name (`global`) checks to folder validation. Malformed scheduled tasks are now paused instead of retrying forever (port of upstream 2e1c768, 02d8528)
+
 ### .env permissions warning
 
 - `readEnvFile()` warns on stderr if `.env` has group/other read permissions (mode > 600)

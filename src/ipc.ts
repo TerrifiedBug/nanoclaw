@@ -11,7 +11,7 @@ import {
   TIMEZONE,
 } from './config.js';
 import { AvailableGroup } from './container-runner.js';
-import { createTask, deleteTask, getTaskById, updateTask } from './db.js';
+import { createTask, deleteTask, getTaskById, isValidGroupFolder, updateTask } from './db.js';
 import { logger } from './logger.js';
 import { RegisteredGroup } from './types.js';
 
@@ -493,7 +493,7 @@ export async function processTaskIpc(
       }
       if (data.jid && data.name && data.folder && data.trigger) {
         // Validate folder name: allowlist of safe characters only
-        if (!/^[a-z0-9][a-z0-9_-]*$/i.test(data.folder)) {
+        if (!isValidGroupFolder(data.folder)) {
           logger.warn(
             { folder: data.folder },
             'Rejected register_group with invalid folder name (path traversal attempt)',
