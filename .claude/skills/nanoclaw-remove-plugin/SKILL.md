@@ -33,9 +33,9 @@ Note these fields for cleanup:
 - `containerMounts` — host data directories (warn user, don't auto-delete)
 - `dependencies` — whether it has its own `node_modules`
 
-Check for a `Dockerfile.partial`:
+Check for a `Dockerfile.partial` (could be in either plugin path):
 ```bash
-[ -f plugins/{name}/Dockerfile.partial ] && echo "HAS_DOCKERFILE_PARTIAL" || echo "NO_DOCKERFILE_PARTIAL"
+[ -f plugins/{name}/Dockerfile.partial ] || [ -f plugins/channels/{name}/Dockerfile.partial ] && echo "HAS_DOCKERFILE_PARTIAL" || echo "NO_DOCKERFILE_PARTIAL"
 ```
 
 ## Step 3: Show Removal Plan
@@ -98,12 +98,12 @@ rm -rf plugins/channels/{name}/
 For each var in `containerEnvVars`, remove from `.env` and all per-group `.env` files:
 
 ```bash
-# Remove from global .env
-sed -i '/^VAR_NAME=/d' .env
+# Remove from global .env (portable across macOS BSD sed and GNU sed)
+sed -i.bak '/^VAR_NAME=/d' .env && rm -f .env.bak
 
 # Remove from per-group .env files
 for f in groups/*/.env; do
-  [ -f "$f" ] && sed -i '/^VAR_NAME=/d' "$f"
+  [ -f "$f" ] && sed -i.bak '/^VAR_NAME=/d' "$f" && rm -f "$f.bak"
 done
 ```
 
