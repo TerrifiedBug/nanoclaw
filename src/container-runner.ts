@@ -98,7 +98,14 @@ export async function runContainerAgent(
   const groupDir = path.join(GROUPS_DIR, group.folder);
   fs.mkdirSync(groupDir, { recursive: true });
 
-  const mounts = buildVolumeMounts(group, input.isMain, input.model);
+  // Read model file once — used for both logging and buildVolumeMounts
+  const storeModelFile = path.join(process.cwd(), 'store', 'claude-model');
+  const storedModel = fs.existsSync(storeModelFile)
+    ? fs.readFileSync(storeModelFile, 'utf-8').trim()
+    : '';
+  const effectiveModel = input.model || storedModel || 'sdk-default';
+
+  const mounts = buildVolumeMounts(group, input.isMain, input.model || storedModel || undefined);
 
   // Fix permissions on writable mounts (Docker only — Apple Container handles this natively)
   await Promise.all(
@@ -121,12 +128,6 @@ export async function runContainerAgent(
     },
     'Container mount configuration',
   );
-
-  // Determine effective model for logging
-  const storeModelFile = path.join(process.cwd(), 'store', 'claude-model');
-  const effectiveModel = input.model
-    || (fs.existsSync(storeModelFile) && fs.readFileSync(storeModelFile, 'utf-8').trim())
-    || 'sdk-default';
 
   logger.info(
     {
@@ -354,8 +355,8 @@ export async function runContainerAgent(
             group: group.name,
             code,
             duration,
-            stderr,
-            stdout,
+            stderr: redactSecrets(stderr),
+            stdout: redactSecrets(stdout),
             logFile,
           },
           'Container exited with error',
@@ -364,7 +365,7 @@ export async function runContainerAgent(
         resolve({
           status: 'error',
           result: null,
-          error: `Container exited with code ${code}: ${stderr.slice(-200)}`,
+          error: `Container exited with code ${code}: ${redactSecrets(stderr.slice(-200))}`,
         });
         return;
       }
