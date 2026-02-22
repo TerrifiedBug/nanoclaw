@@ -280,6 +280,10 @@ Upstream passes secrets via environment variables, which are visible to `env` an
 - **Exact matching only** — `matchesBlockedPattern()` uses strict `===` on path components instead of substring `.includes()`, preventing false positives (e.g. blocking "my-credentials-app" because it contained "credentials")
 - **Additional blocked patterns** — `secrets.json`, `token.json`, `.ssh-agent`
 
+### Read-only project root mount
+
+- **Read-only project root mount** — Main group's project root is now mounted read-only to prevent container escape via host code modification (port of upstream 5fb1064)
+
 ### .env permissions warning
 
 - `readEnvFile()` warns on stderr if `.env` has group/other read permissions (mode > 600)

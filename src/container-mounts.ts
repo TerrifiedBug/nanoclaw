@@ -145,11 +145,14 @@ export function buildVolumeMounts(
   }
 
   if (isMain) {
-    // Main gets the entire project root mounted
+    // Main gets the project root read-only. Writable paths the agent needs
+    // (group folder, IPC, .claude/) are mounted separately below.
+    // Read-only prevents the agent from modifying host application code
+    // (src/, dist/, package.json) which would bypass the sandbox on next restart.
     mounts.push({
       hostPath: projectRoot,
       containerPath: '/workspace/project',
-      readonly: false,
+      readonly: true,
     });
 
     // Main also gets its group folder as the working directory

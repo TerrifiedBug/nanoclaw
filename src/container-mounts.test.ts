@@ -187,7 +187,7 @@ describe('buildVolumeMounts: main vs non-main', () => {
     const mounts = buildVolumeMounts(makeGroup(), true);
     const project = mounts.find(m => m.containerPath === '/workspace/project');
     expect(project).toBeDefined();
-    expect(project!.readonly).toBe(false);
+    expect(project!.readonly).toBe(true);
   });
 
   it('non-main does NOT get project root', () => {
