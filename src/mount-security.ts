@@ -152,10 +152,10 @@ function matchesBlockedPattern(
   const pathParts = realPath.split(path.sep);
 
   for (const pattern of blockedPatterns) {
-    // Exact match on path components only — substring matching caused false positives
+    // Exact match or dotfile/extension variants — substring matching caused false positives
     // (e.g. blocking "my-credentials-app" because it contains "credentials")
     for (const part of pathParts) {
-      if (part === pattern) {
+      if (part === pattern || part.startsWith(pattern + '.') || part.startsWith('.' + pattern)) {
         return pattern;
       }
     }

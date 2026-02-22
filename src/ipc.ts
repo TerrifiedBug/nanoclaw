@@ -43,8 +43,8 @@ function readIpcJsonFile(filePath: string, sourceGroup: string): unknown | null 
     const fd = fs.openSync(filePath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
     try {
       const buf = Buffer.alloc(stat.size);
-      fs.readSync(fd, buf, 0, stat.size, 0);
-      return JSON.parse(buf.toString('utf-8'));
+      const bytesRead = fs.readSync(fd, buf, 0, stat.size, 0);
+      return JSON.parse(buf.slice(0, bytesRead).toString('utf-8'));
     } finally {
       fs.closeSync(fd);
     }
@@ -192,6 +192,14 @@ export function startIpcWatcher(deps: IpcDeps): void {
                 if (!fs.existsSync(hostPath)) {
                   logger.warn({ hostPath, sourceGroup }, 'send_file: file not found');
                 } else {
+                  // Resolve symlinks and re-check containment (path.resolve doesn't follow symlinks)
+                  const realHost = fs.realpathSync(hostPath);
+                  const realGroup = fs.realpathSync(path.join(GROUPS_DIR, sourceGroup));
+                  if (!realHost.startsWith(realGroup + path.sep) && realHost !== realGroup) {
+                    logger.warn({ hostPath, realHost, realGroup, sourceGroup }, 'send_file: symlink traversal blocked');
+                    fs.unlinkSync(filePath);
+                    continue;
+                  }
                   const stat = fs.statSync(hostPath);
                   if (!stat.isFile()) {
                     logger.warn({ hostPath, sourceGroup }, 'send_file: not a regular file');
