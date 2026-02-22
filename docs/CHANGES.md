@@ -257,6 +257,30 @@ Upstream passes secrets via environment variables, which are visible to `env` an
 6. **OAuth credentials bind-mounted** (`src/container-mounts.ts`) — host `~/.claude/.credentials.json` is bind-mounted directly into containers rather than copied at spawn time, so token refreshes on the host are immediately visible to running containers
 7. **Auth error detection** (`src/orchestrator.ts`) — authentication failures (expired tokens, invalid API keys) are detected by pattern matching and immediately surfaced to the user with a specific `[Auth Error]` message, even mid-conversation when other output has already been sent
 
+### Container hardening (Docker)
+
+- **`--cap-drop=ALL`** drops every Linux capability, then re-adds only `SYS_PTRACE` (needed for Chromium crashpad)
+- **`--security-opt=no-new-privileges`** prevents privilege escalation via setuid/setgid binaries inside the container
+- **Per-run output nonce** — output markers are `---NANOCLAW_OUTPUT_{nonce}_START---` instead of static strings. The 32-char hex nonce is generated per container run and passed via stdin, making it impossible for injected agent output to spoof real output markers
+
+### IPC hardening
+
+- **Symlink rejection** — `lstatSync()` rejects non-regular-file entries before reading (CWE-59)
+- **O_NOFOLLOW** — file descriptor opened with `O_NOFOLLOW` flag to prevent TOCTOU race between lstat and open (CWE-367)
+- **Size limit** — IPC JSON files capped at 1 MiB (prevents DoS via oversized files)
+- **Entry type filtering** — `readdirSync({ withFileTypes: true })` used throughout, so only real files and directories are processed
+- **send_file path traversal** — resolved host path validated to stay within the group directory (prevents `../../etc/passwd`-style attacks)
+- **Once-schedule UTC fix** — bare datetime strings (no timezone suffix) now treated as UTC instead of server-local timezone
+
+### Mount security
+
+- **Exact matching only** — `matchesBlockedPattern()` uses strict `===` on path components instead of substring `.includes()`, preventing false positives (e.g. blocking "my-credentials-app" because it contained "credentials")
+- **Additional blocked patterns** — `secrets.json`, `token.json`, `.ssh-agent`
+
+### .env permissions warning
+
+- `readEnvFile()` warns on stderr if `.env` has group/other read permissions (mode > 600)
+
 ### What's protected
 
 - **Bash sanitization**: Agent Bash commands are inspected; access to `/proc/*/environ` (which leaks all env vars including secrets) is blocked
