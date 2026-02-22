@@ -17,6 +17,14 @@ import path from 'path';
 const REDACTED = '[REDACTED]';
 const MIN_SECRET_LENGTH = 8; // Avoid false positives on short values
 
+// Critical secrets that can NEVER be exempted from redaction, even by plugins.
+const NEVER_EXEMPT = new Set([
+  'ANTHROPIC_API_KEY',
+  'CLAUDE_CODE_OAUTH_TOKEN',
+  'OPENAI_API_KEY',
+  'DASHBOARD_SECRET',
+]);
+
 // Config vars whose values are NOT secrets and should NOT be redacted.
 // Everything else from .env is treated as potentially sensitive.
 const NON_SECRET_VARS = new Set([
@@ -54,6 +62,11 @@ export function loadSecrets(additionalSafeVars?: string[]): void {
   const safeVars = new Set(NON_SECRET_VARS);
   if (additionalSafeVars) {
     for (const v of additionalSafeVars) safeVars.add(v);
+  }
+
+  // Remove critical secrets from safe-list — these must never be exempt
+  for (const key of NEVER_EXEMPT) {
+    safeVars.delete(key);
   }
 
   secretValues = [];
