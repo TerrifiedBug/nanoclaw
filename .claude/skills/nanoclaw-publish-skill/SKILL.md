@@ -112,10 +112,10 @@ Replace all occurrences of `.claude/skills/${SKILL_DIR}/files/` and `.claude/ski
 After the path transformation, check if the SKILL.md already contains a `.marketplace.json` write step. If not, find the first `cp -r ${CLAUDE_PLUGIN_ROOT}/files/` line and inject a marketplace breadcrumb write immediately after it:
 
 ```bash
-echo '{"marketplace":"nanoclaw-skills","plugin":"${PLUGIN_NAME}"}' > plugins/{dest}/.marketplace.json
+echo '{"marketplace":"nanoclaw-skills","plugin":"<PLUGIN_NAME>"}' > plugins/<dest>/.marketplace.json
 ```
 
-Where `{dest}` matches the destination path from the `cp -r` line (e.g., `plugins/weather/`, `plugins/channels/discord/`). Match the indentation of the surrounding code.
+Replace `<PLUGIN_NAME>` with the actual literal plugin name (e.g., `nanoclaw-weather`) and `<dest>` with the destination path from the `cp -r` line (e.g., `plugins/weather/`, `plugins/channels/discord/`). These must be literal strings, not shell variables. Match the indentation of the surrounding code.
 
 This ensures `/nanoclaw-update` can detect marketplace updates by diffing installed files against the marketplace source.
 

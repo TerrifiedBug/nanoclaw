@@ -131,7 +131,7 @@ For each `.marketplace.json` found:
 3. If the source directory doesn't exist, skip (marketplace not synced)
 4. Diff installed vs source (excluding `.marketplace.json` and `node_modules`):
    ```bash
-   diff -rq {source}/ {installed}/ --exclude=.marketplace.json --exclude=node_modules
+   diff -rq -x .marketplace.json -x node_modules {source}/ {installed}/
    ```
 5. If differences exist → flag as "marketplace update available"
 6. If no differences → plugin is up to date
@@ -231,7 +231,10 @@ If user says yes, for each plugin to update:
    cp -r {source}/* {installed}/
    ```
 4. Re-apply the preserved `channels` and `groups` arrays to the new `plugin.json` (overwrite what the marketplace set)
-5. Re-write the `.marketplace.json` breadcrumb (in case the plugin name changed)
+5. Re-write the `.marketplace.json` breadcrumb using the values read in step 1:
+   ```bash
+   echo '{"marketplace":"<MARKETPLACE>","plugin":"<PLUGIN>"}' > {installed}/.marketplace.json
+   ```
 6. If the plugin has `dependencies: true` in plugin.json, run `npm install` in the plugin directory
 7. Report what was updated
 
