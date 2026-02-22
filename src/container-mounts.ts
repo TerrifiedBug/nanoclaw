@@ -54,6 +54,9 @@ async function fileExists(p: string): Promise<boolean> {
 
 let pluginRegistry: PluginRegistry | null = null;
 
+/** Cached global .env parse — file doesn't change during process lifetime. */
+let globalEnvCache: Map<string, string> | null = null;
+
 /** Set the plugin registry for dynamic env vars and skill mounting */
 export function setPluginRegistry(registry: PluginRegistry): void {
   pluginRegistry = registry;
@@ -304,14 +307,17 @@ async function buildEnvMount(
   const envDir = path.join(DATA_DIR, 'env', group.folder);
   await fs.promises.mkdir(envDir, { recursive: true });
 
-  // Parse global .env, then overlay group-specific .env (group values win)
-  const envMap = new Map<string, string>();
-  const envFile = path.join(projectRoot, '.env');
-  if (await fileExists(envFile)) {
-    for (const [key, line] of parseEnvLines(await fs.promises.readFile(envFile, 'utf-8'))) {
-      envMap.set(key, line);
+  // Parse global .env (cached — doesn't change during process lifetime)
+  if (globalEnvCache === null) {
+    const envFile = path.join(projectRoot, '.env');
+    if (await fileExists(envFile)) {
+      globalEnvCache = parseEnvLines(await fs.promises.readFile(envFile, 'utf-8'));
+    } else {
+      globalEnvCache = new Map();
     }
   }
+  // Clone so group overlays don't mutate the cache
+  const envMap = new Map(globalEnvCache);
   const groupEnvFile = path.join(GROUPS_DIR, group.folder, '.env');
   try {
     for (const [key, line] of parseEnvLines(await fs.promises.readFile(groupEnvFile, 'utf-8'))) {
