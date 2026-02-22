@@ -43,6 +43,7 @@ const NON_SECRET_VARS = new Set([
 ]);
 
 let secretValues: string[] = [];
+let secretPattern: RegExp | null = null;
 
 /**
  * Load secret values from .env that should never appear in output.
@@ -56,6 +57,7 @@ export function loadSecrets(additionalSafeVars?: string[]): void {
     content = fs.readFileSync(envFile, 'utf-8');
   } catch {
     secretValues = [];
+    secretPattern = null;
     return;
   }
 
@@ -131,6 +133,14 @@ export function loadSecrets(additionalSafeVars?: string[]): void {
 
   // Also extract tokens from ~/.claude/.credentials.json (OAuth auth path)
   loadCredentialsTokens();
+
+  // Build composite regex for single-pass redaction
+  if (secretValues.length > 0) {
+    const escaped = secretValues.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    secretPattern = new RegExp(escaped.join('|'), 'g');
+  } else {
+    secretPattern = null;
+  }
 }
 
 function loadCredentialsTokens(): void {
@@ -150,13 +160,11 @@ function loadCredentialsTokens(): void {
 
 /**
  * Replace any known secret values in the given text with [REDACTED].
- * Uses split/join for literal replacement — no regex escaping needed,
- * which matters because API keys can contain +, $, and other special chars.
+ * Uses a pre-built composite regex for single-pass replacement — O(N) instead
+ * of O(N*M). Special characters in API keys are properly escaped at load time.
  */
 export function redactSecrets(text: string): string {
-  let result = text;
-  for (const secret of secretValues) {
-    result = result.split(secret).join(REDACTED);
-  }
-  return result;
+  if (!secretPattern) return text;
+  secretPattern.lastIndex = 0;
+  return text.replace(secretPattern, REDACTED);
 }
