@@ -313,7 +313,7 @@ function computeNextRun(
   } else if (type === 'once') {
     // Treat bare datetime strings (no Z or ±HH:MM) as UTC to avoid
     // silent local-timezone interpretation on the server.
-    const hasTimezone = /[Zz]|[+-]\d{2}:\d{2}$/.test(value);
+    const hasTimezone = /[Zz]|[+-]\d{2}:?\d{2}$/.test(value);
     const scheduled = new Date(hasTimezone ? value : value + 'Z');
     if (isNaN(scheduled.getTime())) {
       logger.warn({ scheduleValue: value }, 'Invalid timestamp');
