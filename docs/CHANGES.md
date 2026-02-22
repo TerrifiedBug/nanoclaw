@@ -384,6 +384,8 @@ These are clean fixes submitted to upstream. If they merge, the divergences coll
 | [#247](https://github.com/qwibitai/nanoclaw/pull/247) | Consecutive error tracking — counts sequential failures, notifies user | `src/index.ts` |
 | [#248](https://github.com/qwibitai/nanoclaw/pull/248) | Duplicate task creation prevention — warns in IPC tool description | `container/agent-runner/src/ipc-mcp-stdio.ts` |
 
+- **Container timezone** — TZ is now passed to containers via env. Containers no longer default to UTC. UTC-suffixed timestamps are rejected in schedule_task validation since all times should be local (port of upstream 77f7423)
+
 ---
 
 ## 8. New Skills

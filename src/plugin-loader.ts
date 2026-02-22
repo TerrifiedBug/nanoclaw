@@ -16,6 +16,7 @@ const CORE_ENV_VARS = [
   'ANTHROPIC_API_KEY',
   'ASSISTANT_NAME',
   'CLAUDE_MODEL',
+  'TZ',
 ];
 
 function parseStringArray(val: unknown): string[] {
