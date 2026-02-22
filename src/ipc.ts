@@ -15,6 +15,28 @@ import { createTask, deleteTask, getTaskById, isValidGroupFolder, updateTask } f
 import { logger } from './logger.js';
 import { RegisteredGroup } from './types.js';
 
+/** Discriminated union for IPC message commands. */
+type IpcMessage =
+  | { type: 'message'; chatJid: string; text: string; sender?: string; replyTo?: string }
+  | { type: 'send_file'; chatJid: string; filePath: string; fileName?: string; caption?: string }
+  | { type: 'react'; chatJid: string; messageId: string; emoji: string };
+
+/** Type guard for IPC messages. */
+function isIpcMessage(data: unknown): data is IpcMessage {
+  if (typeof data !== 'object' || data === null || !('type' in data)) return false;
+  const d = data as Record<string, unknown>;
+  switch (d.type) {
+    case 'message':
+      return typeof d.chatJid === 'string' && typeof d.text === 'string';
+    case 'send_file':
+      return typeof d.chatJid === 'string' && typeof d.filePath === 'string';
+    case 'react':
+      return typeof d.chatJid === 'string' && typeof d.messageId === 'string' && typeof d.emoji === 'string';
+    default:
+      return false;
+  }
+}
+
 /** Max file size for send_file (64 MB) */
 const SEND_FILE_MAX_SIZE = 64 * 1024 * 1024;
 
@@ -167,68 +189,79 @@ export function startIpcWatcher(deps: IpcDeps): Promise<void> {
                 quarantineFile(filePath, sourceGroup, file, ipcBaseDir);
                 continue;
               }
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const data = raw as any;
-              if (data.type === 'message' && data.chatJid && data.text) {
-                if (!isAuthorizedForJid(data.chatJid, registeredGroups, sourceGroup, isMain, 'message')) continue;
-                await deps.sendMessage(data.chatJid, data.text, data.sender, data.replyTo as string | undefined);
-                logger.info(
-                  { chatJid: data.chatJid, sourceGroup },
-                  'IPC message sent',
-                );
-              } else if (data.type === 'send_file' && data.chatJid && data.filePath) {
-                if (!isAuthorizedForJid(data.chatJid, registeredGroups, sourceGroup, isMain, 'send_file')) continue;
-                // Translate container path to host path
-                // Container /workspace/group/... → host groups/{folder}/...
-                let hostPath = data.filePath as string;
-                if (hostPath.startsWith('/workspace/group/')) {
-                  hostPath = path.join(GROUPS_DIR, sourceGroup, hostPath.slice('/workspace/group/'.length));
+              if (!isIpcMessage(raw)) {
+                logger.warn({ filePath, sourceGroup, type: (raw as Record<string, unknown>)?.type }, 'IPC: invalid message format');
+                quarantineFile(filePath, sourceGroup, file, ipcBaseDir);
+                continue;
+              }
+              const data = raw;
+              switch (data.type) {
+                case 'message': {
+                  if (!isAuthorizedForJid(data.chatJid, registeredGroups, sourceGroup, isMain, 'message')) break;
+                  await deps.sendMessage(data.chatJid, data.text, data.sender, data.replyTo);
+                  logger.info(
+                    { chatJid: data.chatJid, sourceGroup },
+                    'IPC message sent',
+                  );
+                  break;
                 }
+                case 'send_file': {
+                  if (!isAuthorizedForJid(data.chatJid, registeredGroups, sourceGroup, isMain, 'send_file')) break;
+                  // Translate container path to host path
+                  // Container /workspace/group/... → host groups/{folder}/...
+                  let hostPath = data.filePath;
+                  if (hostPath.startsWith('/workspace/group/')) {
+                    hostPath = path.join(GROUPS_DIR, sourceGroup, hostPath.slice('/workspace/group/'.length));
+                  }
 
-                // Prevent path traversal: resolved path must stay within the group directory
-                const groupRoot = path.resolve(path.join(GROUPS_DIR, sourceGroup));
-                const resolvedHost = path.resolve(hostPath);
-                if (!resolvedHost.startsWith(groupRoot + path.sep) && resolvedHost !== groupRoot) {
-                  logger.warn({ hostPath, resolvedHost, groupRoot, sourceGroup }, 'send_file: path traversal blocked');
-                  fs.unlinkSync(filePath);
-                  continue;
-                }
-
-                if (!fs.existsSync(hostPath)) {
-                  logger.warn({ hostPath, sourceGroup }, 'send_file: file not found');
-                } else {
-                  // Resolve symlinks and re-check containment (path.resolve doesn't follow symlinks)
-                  const realHost = fs.realpathSync(hostPath);
-                  const realGroup = fs.realpathSync(path.join(GROUPS_DIR, sourceGroup));
-                  if (!realHost.startsWith(realGroup + path.sep) && realHost !== realGroup) {
-                    logger.warn({ hostPath, realHost, realGroup, sourceGroup }, 'send_file: symlink traversal blocked');
+                  // Prevent path traversal: resolved path must stay within the group directory
+                  const groupRoot = path.resolve(path.join(GROUPS_DIR, sourceGroup));
+                  const resolvedHost = path.resolve(hostPath);
+                  if (!resolvedHost.startsWith(groupRoot + path.sep) && resolvedHost !== groupRoot) {
+                    logger.warn({ hostPath, resolvedHost, groupRoot, sourceGroup }, 'send_file: path traversal blocked');
                     fs.unlinkSync(filePath);
-                    continue;
+                    break;
                   }
-                  const stat = fs.statSync(hostPath);
-                  if (!stat.isFile()) {
-                    logger.warn({ hostPath, sourceGroup }, 'send_file: not a regular file');
-                  } else if (stat.size > SEND_FILE_MAX_SIZE) {
-                    logger.warn({ hostPath, size: stat.size, sourceGroup }, 'send_file: file too large (64MB limit)');
+
+                  if (!fs.existsSync(hostPath)) {
+                    logger.warn({ hostPath, sourceGroup }, 'send_file: file not found');
                   } else {
-                    const buffer = fs.readFileSync(hostPath);
-                    const mime = mimeFromExtension(hostPath);
-                    const fileName = (data.fileName as string) || path.basename(hostPath);
-                    const caption = data.caption as string | undefined;
-                    await deps.sendFile(data.chatJid, buffer, mime, fileName, caption);
-                    logger.info(
-                      { chatJid: data.chatJid, fileName, mime, size: stat.size, sourceGroup },
-                      'IPC file sent',
-                    );
+                    // Resolve symlinks and re-check containment (path.resolve doesn't follow symlinks)
+                    const realHost = fs.realpathSync(hostPath);
+                    const realGroup = fs.realpathSync(path.join(GROUPS_DIR, sourceGroup));
+                    if (!realHost.startsWith(realGroup + path.sep) && realHost !== realGroup) {
+                      logger.warn({ hostPath, realHost, realGroup, sourceGroup }, 'send_file: symlink traversal blocked');
+                      fs.unlinkSync(filePath);
+                      break;
+                    }
+                    const stat = fs.statSync(hostPath);
+                    if (!stat.isFile()) {
+                      logger.warn({ hostPath, sourceGroup }, 'send_file: not a regular file');
+                    } else if (stat.size > SEND_FILE_MAX_SIZE) {
+                      logger.warn({ hostPath, size: stat.size, sourceGroup }, 'send_file: file too large (64MB limit)');
+                    } else {
+                      const buffer = fs.readFileSync(hostPath);
+                      const mime = mimeFromExtension(hostPath);
+                      const fileName = data.fileName || path.basename(hostPath);
+                      const caption = data.caption;
+                      await deps.sendFile(data.chatJid, buffer, mime, fileName, caption);
+                      logger.info(
+                        { chatJid: data.chatJid, fileName, mime, size: stat.size, sourceGroup },
+                        'IPC file sent',
+                      );
+                    }
                   }
+                  break;
                 }
-              } else if (data.type === 'react' && data.chatJid && data.messageId && data.emoji) {
-                if (!isAuthorizedForJid(data.chatJid, registeredGroups, sourceGroup, isMain, 'react')) continue;
-                await deps.react(data.chatJid, data.messageId as string, data.emoji as string);
-                logger.info(
-                  { chatJid: data.chatJid, messageId: data.messageId, sourceGroup },
-                  'IPC react sent',
-                );
+                case 'react': {
+                  if (!isAuthorizedForJid(data.chatJid, registeredGroups, sourceGroup, isMain, 'react')) break;
+                  await deps.react(data.chatJid, data.messageId, data.emoji);
+                  logger.info(
+                    { chatJid: data.chatJid, messageId: data.messageId, sourceGroup },
+                    'IPC react sent',
+                  );
+                  break;
+                }
               }
               fs.unlinkSync(filePath);
             } catch (err) {
