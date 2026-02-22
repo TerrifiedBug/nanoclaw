@@ -43,6 +43,15 @@ function parseEnvLines(content: string): Map<string, string> {
   return entries;
 }
 
+async function fileExists(p: string): Promise<boolean> {
+  try {
+    await fs.promises.access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 let pluginRegistry: PluginRegistry | null = null;
 
 /** Set the plugin registry for dynamic env vars and skill mounting */
@@ -66,11 +75,11 @@ export function getHomeDir(): string {
   return home;
 }
 
-export function buildVolumeMounts(
+export async function buildVolumeMounts(
   group: RegisteredGroup,
   isMain: boolean,
   modelOverride?: string,
-): VolumeMount[] {
+): Promise<VolumeMount[]> {
   const mounts: VolumeMount[] = [];
   const homeDir = getHomeDir();
   const projectRoot = process.cwd();
@@ -78,10 +87,10 @@ export function buildVolumeMounts(
   // Core agent skills — mount each subdirectory individually so plugin skill
   // mounts can coexist (mounting the parent as read-only blocks child mounts)
   const skillsDir = path.join(projectRoot, 'container', 'skills');
-  if (fs.existsSync(skillsDir)) {
-    for (const entry of fs.readdirSync(skillsDir)) {
+  if (await fileExists(skillsDir)) {
+    for (const entry of await fs.promises.readdir(skillsDir)) {
       const entryPath = path.join(skillsDir, entry);
-      if (fs.statSync(entryPath).isDirectory()) {
+      if ((await fs.promises.stat(entryPath)).isDirectory()) {
         mounts.push({
           hostPath: entryPath,
           containerPath: `/workspace/.claude/skills/${entry}`,
@@ -129,16 +138,16 @@ export function buildVolumeMounts(
     const mergedMcp = pluginRegistry.getMergedMcpConfig(mcpJsonFile, scopeChannel, scopeGroup);
     if (Object.keys(mergedMcp.mcpServers).length > 0) {
       const mergedMcpDir = path.join(DATA_DIR, 'env', group.folder);
-      fs.mkdirSync(mergedMcpDir, { recursive: true });
+      await fs.promises.mkdir(mergedMcpDir, { recursive: true });
       const mergedMcpPath = path.join(mergedMcpDir, 'merged-mcp.json');
-      fs.writeFileSync(mergedMcpPath, JSON.stringify(mergedMcp, null, 2));
+      await fs.promises.writeFile(mergedMcpPath, JSON.stringify(mergedMcp, null, 2));
       mounts.push({
         hostPath: mergedMcpPath,
         containerPath: '/workspace/.mcp.json',
         readonly: true,
       });
     }
-  } else if (fs.existsSync(mcpJsonFile)) {
+  } else if (await fileExists(mcpJsonFile)) {
     mounts.push({
       hostPath: mcpJsonFile,
       containerPath: '/workspace/.mcp.json',
@@ -178,7 +187,7 @@ export function buildVolumeMounts(
 
   // Global directory (read-only) — available to all groups for IDENTITY.md and shared config
   const globalDir = path.join(GROUPS_DIR, 'global');
-  if (fs.existsSync(globalDir)) {
+  if (await fileExists(globalDir)) {
     mounts.push({
       hostPath: globalDir,
       containerPath: '/workspace/global',
@@ -195,10 +204,10 @@ export function buildVolumeMounts(
     '.claude',
   );
   assertPathWithin(groupSessionsDir, sessionsBase, 'sessions dir');
-  fs.mkdirSync(groupSessionsDir, { recursive: true });
+  await fs.promises.mkdir(groupSessionsDir, { recursive: true });
   const settingsFile = path.join(groupSessionsDir, 'settings.json');
-  if (!fs.existsSync(settingsFile)) {
-    fs.writeFileSync(settingsFile, JSON.stringify({
+  if (!(await fileExists(settingsFile))) {
+    await fs.promises.writeFile(settingsFile, JSON.stringify({
       env: {
         // Enable agent swarms (subagent orchestration)
         // https://code.claude.com/docs/en/agent-teams#orchestrate-teams-of-claude-code-sessions
@@ -216,14 +225,14 @@ export function buildVolumeMounts(
   // Clean stale skills from session directory — all skills are now
   // delivered via plugin bind-mounts at /workspace/.claude/skills/
   const skillsDst = path.join(groupSessionsDir, 'skills');
-  if (fs.existsSync(skillsDst)) {
-    fs.rmSync(skillsDst, { recursive: true });
+  if (await fileExists(skillsDst)) {
+    await fs.promises.rm(skillsDst, { recursive: true });
   }
 
   // Clean up stale credentials copy from pre-bind-mount era
   const staleCredsFile = path.join(groupSessionsDir, '.credentials.json');
-  if (fs.existsSync(staleCredsFile)) {
-    try { fs.unlinkSync(staleCredsFile); } catch { /* non-fatal */ }
+  if (await fileExists(staleCredsFile)) {
+    try { await fs.promises.unlink(staleCredsFile); } catch { /* non-fatal */ }
   }
 
   mounts.push({
@@ -236,7 +245,7 @@ export function buildVolumeMounts(
   // File-level mount overlays the directory mount at this specific path.
   // Must be read-write: the SDK needs write access to refresh tokens and update auth state.
   const hostCredsFile = path.join(getHomeDir(), '.claude', '.credentials.json');
-  if (fs.existsSync(hostCredsFile)) {
+  if (await fileExists(hostCredsFile)) {
     mounts.push({
       hostPath: hostCredsFile,
       containerPath: '/home/node/.claude/.credentials.json',
@@ -249,9 +258,9 @@ export function buildVolumeMounts(
   const ipcBase = path.join(DATA_DIR, 'ipc');
   const groupIpcDir = path.join(ipcBase, group.folder);
   assertPathWithin(groupIpcDir, ipcBase, 'IPC dir');
-  fs.mkdirSync(path.join(groupIpcDir, 'messages'), { recursive: true });
-  fs.mkdirSync(path.join(groupIpcDir, 'tasks'), { recursive: true });
-  fs.mkdirSync(path.join(groupIpcDir, 'input'), { recursive: true });
+  await fs.promises.mkdir(path.join(groupIpcDir, 'messages'), { recursive: true });
+  await fs.promises.mkdir(path.join(groupIpcDir, 'tasks'), { recursive: true });
+  await fs.promises.mkdir(path.join(groupIpcDir, 'input'), { recursive: true });
   mounts.push({
     hostPath: groupIpcDir,
     containerPath: '/workspace/ipc',
@@ -261,7 +270,7 @@ export function buildVolumeMounts(
   // Environment file directory (workaround for Apple Container -i env var bug)
   // Only expose specific auth variables needed by Claude Code, not the entire .env
   // Per-group directory prevents race conditions during concurrent container spawns
-  buildEnvMount(mounts, group, modelOverride, projectRoot);
+  await buildEnvMount(mounts, group, modelOverride, projectRoot);
 
   // Mount agent-runner source from host — recompiled on container startup.
   // Allows code changes without rebuilding the Docker image.
@@ -286,26 +295,26 @@ export function buildVolumeMounts(
 }
 
 /** Build the per-group env file mount with filtered variables and model overrides. */
-function buildEnvMount(
+async function buildEnvMount(
   mounts: VolumeMount[],
   group: RegisteredGroup,
   modelOverride: string | undefined,
   projectRoot: string,
-): void {
+): Promise<void> {
   const envDir = path.join(DATA_DIR, 'env', group.folder);
-  fs.mkdirSync(envDir, { recursive: true });
+  await fs.promises.mkdir(envDir, { recursive: true });
 
   // Parse global .env, then overlay group-specific .env (group values win)
   const envMap = new Map<string, string>();
   const envFile = path.join(projectRoot, '.env');
-  if (fs.existsSync(envFile)) {
-    for (const [key, line] of parseEnvLines(fs.readFileSync(envFile, 'utf-8'))) {
+  if (await fileExists(envFile)) {
+    for (const [key, line] of parseEnvLines(await fs.promises.readFile(envFile, 'utf-8'))) {
       envMap.set(key, line);
     }
   }
   const groupEnvFile = path.join(GROUPS_DIR, group.folder, '.env');
   try {
-    for (const [key, line] of parseEnvLines(fs.readFileSync(groupEnvFile, 'utf-8'))) {
+    for (const [key, line] of parseEnvLines(await fs.promises.readFile(groupEnvFile, 'utf-8'))) {
       envMap.set(key, line);
     }
   } catch {
@@ -322,8 +331,8 @@ function buildEnvMount(
 
   // Override CLAUDE_MODEL from store file if it exists (set via /set-model skill)
   const modelFile = path.join(projectRoot, 'store', 'claude-model');
-  if (fs.existsSync(modelFile)) {
-    const model = fs.readFileSync(modelFile, 'utf-8').trim();
+  if (await fileExists(modelFile)) {
+    const model = (await fs.promises.readFile(modelFile, 'utf-8')).trim();
     if (model) upsertEnvLine(filteredLines, 'CLAUDE_MODEL', model);
   }
 
@@ -343,7 +352,7 @@ function buildEnvMount(
   });
 
   if (quotedLines.length > 0) {
-    fs.writeFileSync(
+    await fs.promises.writeFile(
       path.join(envDir, 'env'),
       quotedLines.join('\n') + '\n',
     );

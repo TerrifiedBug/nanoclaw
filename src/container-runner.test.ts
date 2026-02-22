@@ -62,6 +62,16 @@ vi.mock('./mount-security.js', () => ({
   validateAdditionalMounts: vi.fn(() => []),
 }));
 
+// Mock container-mounts: buildVolumeMounts is now async
+vi.mock('./container-mounts.js', async () => {
+  const actual = await vi.importActual<typeof import('./container-mounts.js')>('./container-mounts.js');
+  return {
+    ...actual,
+    buildVolumeMounts: vi.fn(async () => []),
+    readSecrets: vi.fn(() => ({})),
+  };
+});
+
 // Mock container-runtime: fixMountPermissions is async and must resolve immediately in tests
 vi.mock('./container-runtime.js', async () => {
   const actual = await vi.importActual<typeof import('./container-runtime.js')>('./container-runtime.js');

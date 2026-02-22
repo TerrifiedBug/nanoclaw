@@ -105,7 +105,7 @@ export async function runContainerAgent(
     : '';
   const effectiveModel = input.model || storedModel || 'sdk-default';
 
-  const mounts = buildVolumeMounts(group, input.isMain, input.model || storedModel || undefined);
+  const mounts = await buildVolumeMounts(group, input.isMain, input.model || storedModel || undefined);
 
   // Fix permissions on writable mounts (Docker only — Apple Container handles this natively)
   await Promise.all(
