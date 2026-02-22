@@ -586,6 +586,20 @@ export function getTaskRunLogs(taskId: string, limit = 50): TaskRunLog[] {
     .all(taskId, limit) as TaskRunLog[];
 }
 
+/** Get recent task run logs across all tasks with a single JOIN query. */
+export function getRecentTaskRunLogs(limit = 15): Array<TaskRunLog & { group_folder: string; prompt: string }> {
+  return db
+    .prepare(`
+      SELECT trl.task_id, trl.run_at, trl.duration_ms, trl.status, trl.result, trl.error,
+             st.group_folder, st.prompt
+      FROM task_run_logs trl
+      JOIN scheduled_tasks st ON trl.task_id = st.id
+      ORDER BY trl.run_at DESC
+      LIMIT ?
+    `)
+    .all(limit) as Array<TaskRunLog & { group_folder: string; prompt: string }>;
+}
+
 export function getRecentMessages(jid: string, limit = 50): NewMessage[] {
   return db
     .prepare('SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message FROM messages WHERE chat_jid = ? ORDER BY timestamp DESC LIMIT ?')
