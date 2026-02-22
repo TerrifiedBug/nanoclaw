@@ -101,11 +101,9 @@ export async function runContainerAgent(
   const mounts = buildVolumeMounts(group, input.isMain, input.model);
 
   // Fix permissions on writable mounts (Docker only — Apple Container handles this natively)
-  for (const mount of mounts) {
-    if (!mount.readonly) {
-      containerRuntime.fixMountPermissions(mount.hostPath);
-    }
-  }
+  await Promise.all(
+    mounts.filter(m => !m.readonly).map(m => containerRuntime.fixMountPermissions(m.hostPath)),
+  );
 
   const safeName = group.folder.replace(/[^a-zA-Z0-9-]/g, '-');
   const containerName = `nanoclaw-${safeName}-${Date.now()}`;

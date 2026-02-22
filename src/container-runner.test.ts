@@ -62,6 +62,15 @@ vi.mock('./mount-security.js', () => ({
   validateAdditionalMounts: vi.fn(() => []),
 }));
 
+// Mock container-runtime: fixMountPermissions is async and must resolve immediately in tests
+vi.mock('./container-runtime.js', async () => {
+  const actual = await vi.importActual<typeof import('./container-runtime.js')>('./container-runtime.js');
+  return {
+    ...actual,
+    fixMountPermissions: vi.fn(() => Promise.resolve()),
+  };
+});
+
 // Create a controllable fake ChildProcess
 function createFakeProcess() {
   const proc = new EventEmitter() as EventEmitter & {
