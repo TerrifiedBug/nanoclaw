@@ -766,8 +766,9 @@ Installable skills (`add-skill-*`, `add-channel-*`) moved to a separate Claude C
 
 **Marketplace update detection:**
 - `/nanoclaw-update` matches installed plugin names to marketplace entries by convention (`plugins/weather/` → `nanoclaw-weather` in `~/.claude/plugins/marketplaces/nanoclaw-skills/`)
+- **Version-gated**: only offers updates when marketplace `version` > installed `version` (semver). Same or lower versions are silently skipped — prevents downgrades from stale marketplace cache
 - Diffs installed plugins against marketplace cache and offers to re-copy changed files while preserving user scoping (`channels`/`groups`)
-- No breadcrumb files or version tracking needed — pure name-convention matching
+- No breadcrumb files needed — pure name-convention matching + version comparison
 
 **Updated skills:**
 - `nanoclaw-setup` — now includes marketplace provisioning step
