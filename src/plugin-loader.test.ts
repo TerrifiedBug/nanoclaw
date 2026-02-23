@@ -284,6 +284,80 @@ describe('PluginRegistry.getPublicEnvVars', () => {
   });
 });
 
+describe('startup error handling', () => {
+  it('continues starting plugins when one throws', async () => {
+    const registry = new PluginRegistry();
+    const started: string[] = [];
+
+    registry.add({
+      manifest: { name: 'good-before' } as any,
+      dir: '',
+      hooks: { onStartup: async () => { started.push('good-before'); } },
+    });
+    registry.add({
+      manifest: { name: 'bad' } as any,
+      dir: '',
+      hooks: { onStartup: async () => { throw new Error('plugin init failed'); } },
+    });
+    registry.add({
+      manifest: { name: 'good-after' } as any,
+      dir: '',
+      hooks: { onStartup: async () => { started.push('good-after'); } },
+    });
+
+    await registry.startup({} as any);
+    expect(started).toEqual(['good-before', 'good-after']);
+  });
+});
+
+describe('hook error handling', () => {
+  it('continues inbound hooks when one throws', async () => {
+    const registry = new PluginRegistry();
+
+    registry.add({
+      manifest: { name: 'prefix' } as any,
+      dir: '',
+      hooks: { onInboundMessage: async (msg: any) => ({ ...msg, text: '[ok] ' + msg.text }) },
+    });
+    registry.add({
+      manifest: { name: 'bad' } as any,
+      dir: '',
+      hooks: { onInboundMessage: async () => { throw new Error('hook failed'); } },
+    });
+    registry.add({
+      manifest: { name: 'suffix' } as any,
+      dir: '',
+      hooks: { onInboundMessage: async (msg: any) => ({ ...msg, text: msg.text + ' [done]' }) },
+    });
+
+    const result = await registry.runInboundHooks({ text: 'hi', jid: 'a@b', pushName: 'x' } as any, 'whatsapp');
+    expect(result.text).toBe('[ok] hi [done]');
+  });
+
+  it('continues outbound hooks when one throws', async () => {
+    const registry = new PluginRegistry();
+
+    registry.add({
+      manifest: { name: 'upper' } as any,
+      dir: '',
+      hooks: { onOutboundMessage: async (text: string) => text.toUpperCase() },
+    });
+    registry.add({
+      manifest: { name: 'bad' } as any,
+      dir: '',
+      hooks: { onOutboundMessage: async () => { throw new Error('hook failed'); } },
+    });
+    registry.add({
+      manifest: { name: 'exclaim' } as any,
+      dir: '',
+      hooks: { onOutboundMessage: async (text: string) => text + '!' },
+    });
+
+    const result = await registry.runOutboundHooks('hello', 'g@g.us', 'whatsapp');
+    expect(result).toBe('HELLO!');
+  });
+});
+
 describe('mergeMcpConfigs', () => {
   it('merges multiple mcp.json fragments', () => {
     const fragment1 = { mcpServers: { ha: { command: 'ha-server' } } };

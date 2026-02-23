@@ -170,7 +170,11 @@ export class PluginRegistry {
     let current = msg;
     for (const plugin of this.plugins) {
       if (plugin.hooks.onInboundMessage) {
-        current = await plugin.hooks.onInboundMessage(current, channel);
+        try {
+          current = await plugin.hooks.onInboundMessage(current, channel);
+        } catch (err) {
+          logger.error({ plugin: plugin.manifest.name, err }, 'Inbound hook error, skipping');
+        }
       }
     }
     return current;
@@ -181,7 +185,11 @@ export class PluginRegistry {
     let current = text;
     for (const plugin of this.plugins) {
       if (plugin.hooks.onOutboundMessage) {
-        current = await plugin.hooks.onOutboundMessage(current, jid, channel);
+        try {
+          current = await plugin.hooks.onOutboundMessage(current, jid, channel);
+        } catch (err) {
+          logger.error({ plugin: plugin.manifest.name, err }, 'Outbound hook error, skipping');
+        }
       }
     }
     return current;
@@ -207,8 +215,12 @@ export class PluginRegistry {
   async startup(ctx: PluginContext): Promise<void> {
     for (const plugin of this.plugins) {
       if (plugin.hooks.onStartup) {
-        await plugin.hooks.onStartup(ctx);
-        logger.info({ plugin: plugin.manifest.name }, 'Plugin started');
+        try {
+          await plugin.hooks.onStartup(ctx);
+          logger.info({ plugin: plugin.manifest.name }, 'Plugin started');
+        } catch (err) {
+          logger.error({ plugin: plugin.manifest.name, err }, 'Plugin startup error');
+        }
       }
     }
   }
