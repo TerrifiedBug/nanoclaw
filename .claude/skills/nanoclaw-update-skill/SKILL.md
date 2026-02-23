@@ -58,13 +58,13 @@ For each plugin directory under `plugins/` and `plugins/channels/`:
    # Count lines only in marketplace (marketplace additions)
    MARKET_ONLY=$(diff -r -x node_modules -x package-lock.json -x plugin.json {installed}/ {cache}/ | grep -c '^> ' || true)
    # Files only in local
-   FILES_LOCAL=$(diff -rq -x node_modules -x package-lock.json -x plugin.json {installed}/ {cache}/ | grep -c "^Only in ${installed}" || true)
+   FILES_LOCAL=$(diff -rq -x node_modules -x package-lock.json -x plugin.json {installed}/ {cache}/ | grep -c "^Only in {installed}" || true)
    # Files only in marketplace
-   FILES_MARKET=$(diff -rq -x node_modules -x package-lock.json -x plugin.json {installed}/ {cache}/ | grep -c "^Only in ${cache}" || true)
+   FILES_MARKET=$(diff -rq -x node_modules -x package-lock.json -x plugin.json {installed}/ {cache}/ | grep -c "^Only in {cache}" || true)
    ```
    - If marketplace has more content (MARKET_ONLY > LOCAL_ONLY or FILES_MARKET > FILES_LOCAL): marketplace may be **ahead** of local — flag as "marketplace ahead"
    - If local has more content: local is likely **ahead** — flag as "local ahead" (safe to sync)
-   - If roughly equal: flag as "unclear direction"
+   - If roughly equal (both have similar additions/removals): flag as "unclear direction" — show the diff summary and ask the user whether to sync or skip
 
 ## Step 2: Present changes
 
@@ -81,7 +81,8 @@ Local improvements (safe to sync → marketplace):
 ⚠ Marketplace may be ahead of local (sync would downgrade):
   - slack: 1 file differs — marketplace has additions not in local
 
-Update local from marketplace instead with `/nanoclaw-update`, or investigate before syncing.
+? Unclear direction (similar changes on both sides):
+  - calendar: 2 files differ — review diff before syncing
 ```
 
 **If ALL plugins are flagged "marketplace ahead"**, tell the user:
@@ -90,7 +91,9 @@ Update local from marketplace instead with `/nanoclaw-update`, or investigate be
 
 Then stop.
 
-Only proceed with plugins flagged "local ahead". Warn about and skip "marketplace ahead" plugins unless the user explicitly overrides.
+For "unclear direction" plugins, show the `diff` output and ask the user whether to include them.
+
+Only auto-proceed with plugins flagged "local ahead". Warn about and skip "marketplace ahead" plugins unless the user explicitly overrides.
 
 If a plugin name argument was given, skip selection and proceed with that plugin.
 
