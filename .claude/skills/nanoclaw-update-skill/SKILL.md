@@ -51,6 +51,20 @@ For each plugin directory under `plugins/` and `plugins/channels/`:
    diff -q /tmp/installed-pj.json /tmp/cache-pj.json
    ```
 5. Collect plugins with differences
+6. For each plugin with differences, check directionality — determine whether local is ahead of marketplace or behind:
+   ```bash
+   # Count lines only in local (local additions)
+   LOCAL_ONLY=$(diff -r -x node_modules -x package-lock.json -x plugin.json {installed}/ {cache}/ | grep -c '^< ' || true)
+   # Count lines only in marketplace (marketplace additions)
+   MARKET_ONLY=$(diff -r -x node_modules -x package-lock.json -x plugin.json {installed}/ {cache}/ | grep -c '^> ' || true)
+   # Files only in local
+   FILES_LOCAL=$(diff -rq -x node_modules -x package-lock.json -x plugin.json {installed}/ {cache}/ | grep -c "^Only in ${installed}" || true)
+   # Files only in marketplace
+   FILES_MARKET=$(diff -rq -x node_modules -x package-lock.json -x plugin.json {installed}/ {cache}/ | grep -c "^Only in ${cache}" || true)
+   ```
+   - If marketplace has more content (MARKET_ONLY > LOCAL_ONLY or FILES_MARKET > FILES_LOCAL): marketplace may be **ahead** of local — flag as "marketplace ahead"
+   - If local has more content: local is likely **ahead** — flag as "local ahead" (safe to sync)
+   - If roughly equal: flag as "unclear direction"
 
 ## Step 2: Present changes
 
@@ -59,12 +73,24 @@ If no changes detected:
 
 Then stop.
 
-Otherwise, show what changed:
+Otherwise, show what changed with directionality:
 ```
-Changed plugins (local vs marketplace cache):
-  - whatsapp: 1 file differs
-  - calendar: 3 files differ
+Local improvements (safe to sync → marketplace):
+  - weather: 3 files differ
+
+⚠ Marketplace may be ahead of local (sync would downgrade):
+  - slack: 1 file differs — marketplace has additions not in local
+
+Update local from marketplace instead with `/nanoclaw-update`, or investigate before syncing.
 ```
+
+**If ALL plugins are flagged "marketplace ahead"**, tell the user:
+> No local improvements detected. The marketplace appears to be ahead of your local plugins.
+> Run `/nanoclaw-update` to pull marketplace updates into your local installation instead.
+
+Then stop.
+
+Only proceed with plugins flagged "local ahead". Warn about and skip "marketplace ahead" plugins unless the user explicitly overrides.
 
 If a plugin name argument was given, skip selection and proceed with that plugin.
 
