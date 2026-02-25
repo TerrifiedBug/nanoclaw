@@ -40,7 +40,7 @@ function isIpcMessage(data: unknown): data is IpcMessage {
 /** Valid task IPC command types. */
 const TASK_IPC_TYPES = new Set([
   'schedule_task', 'pause_task', 'resume_task', 'update_task', 'cancel_task',
-  'refresh_groups', 'register_group',
+  'refresh_groups', 'register_group', 'emergency_stop', 'resume_processing',
 ]);
 
 /** Validate that raw IPC data has a known task type. */
@@ -155,6 +155,8 @@ export interface IpcDeps {
     availableGroups: AvailableGroup[],
     registeredJids: Set<string>,
   ) => void;
+  emergencyStop?: () => Promise<void>;
+  resumeProcessing?: () => void;
 }
 
 let ipcWatcherRunning = false;
@@ -585,6 +587,26 @@ export async function processTaskIpc(
         );
       }
       break;
+
+    case 'emergency_stop': {
+      if (!isMain) {
+        logger.warn({ sourceGroup }, 'emergency_stop rejected: not main group');
+        break;
+      }
+      logger.info({ sourceGroup }, 'Emergency stop requested via IPC');
+      if (deps.emergencyStop) await deps.emergencyStop();
+      break;
+    }
+
+    case 'resume_processing': {
+      if (!isMain) {
+        logger.warn({ sourceGroup }, 'resume_processing rejected: not main group');
+        break;
+      }
+      logger.info({ sourceGroup }, 'Resume requested via IPC');
+      if (deps.resumeProcessing) deps.resumeProcessing();
+      break;
+    }
 
     default:
       logger.warn({ type: data.type }, 'Unknown IPC task type');

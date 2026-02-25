@@ -135,6 +135,13 @@ async function main(): Promise<void> {
     mapTasksToSnapshot,
     writeTasksSnapshot,
     writeGroupsSnapshot,
+    react: async (jid, messageId, emoji) => {
+      const channel = orchestrator.channels.find((c) => c.ownsJid(jid) && c.isConnected());
+      if (channel?.react) {
+        const meta = getMessageMeta(messageId, jid);
+        await channel.react(jid, messageId, emoji, meta?.sender, meta?.isFromMe);
+      }
+    },
     queue,
     assistantName: ASSISTANT_NAME,
     mainGroupFolder: MAIN_GROUP_FOLDER,
@@ -298,6 +305,14 @@ async function main(): Promise<void> {
     },
     getAvailableGroups: () => orchestrator.getAvailableGroups(),
     writeGroupsSnapshot: (gf, im, ag, rj) => writeGroupsSnapshot(gf, im, ag, rj),
+    emergencyStop: async () => {
+      orchestrator.pause();
+      await queue.emergencyStop();
+    },
+    resumeProcessing: () => {
+      queue.resumeProcessing();
+      orchestrator.resume();
+    },
   });
 
   queue.setProcessMessagesFn((chatJid) => orchestrator.processGroupMessages(chatJid));

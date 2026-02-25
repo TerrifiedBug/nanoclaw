@@ -346,6 +346,38 @@ export class GroupQueue {
     }
   }
 
+  async emergencyStop(): Promise<void> {
+    this.shuttingDown = true;
+    const stopPromises: Promise<void>[] = [];
+    for (const [_jid, state] of this.groups) {
+      if (state.process && !state.process.killed && state.containerName) {
+        const name = state.containerName;
+        stopPromises.push(
+          new Promise<void>((resolve) => {
+            containerRuntime.stop(name, (err) => {
+              if (err) logger.warn({ container: name, err: err.message }, 'Failed to stop container');
+              else logger.info({ container: name }, 'Container stopped (emergency)');
+              resolve();
+            });
+          }),
+        );
+      }
+    }
+    if (stopPromises.length > 0) {
+      await Promise.race([
+        Promise.all(stopPromises),
+        new Promise(resolve => setTimeout(resolve, 10000)),
+      ]);
+    }
+    logger.info({ stopped: stopPromises.length }, 'Emergency stop complete');
+  }
+
+  resumeProcessing(): void {
+    this.shuttingDown = false;
+    logger.info('Queue resumed');
+    this.drainWaiting();
+  }
+
   async shutdown(gracePeriodMs: number): Promise<void> {
     this.shuttingDown = true;
 

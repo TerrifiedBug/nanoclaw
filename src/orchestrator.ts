@@ -60,6 +60,9 @@ export interface OrchestratorDeps {
   pollInterval: number;
   groupsDir: string;
 
+  // Reactions
+  react?: (jid: string, messageId: string, emoji: string) => Promise<void>;
+
   // Events
   dbEvents: EventEmitter;
 
@@ -161,6 +164,34 @@ export class MessageOrchestrator {
     this.deps.dbEvents.emit('new-message', '__stop__');
   }
 
+  /** Pause the message loop (for emergency stop). */
+  pause(): void {
+    this.stopRequested = true;
+    this.deps.dbEvents.emit('new-message', '__pause__');
+    this.deps.logger.info('Message loop paused');
+  }
+
+  /** Resume the message loop after a pause. */
+  resume(): void {
+    if (this.stopRequested) {
+      this.stopRequested = false;
+      // Wait for the old loop to fully exit before starting a new one
+      const tryStart = () => {
+        if (!this.messageLoopRunning) {
+          this.startMessageLoop().catch((err) => {
+            this.deps.logger.error({ err }, 'Failed to restart message loop');
+          });
+          this.deps.logger.info('Message loop resumed');
+        } else {
+          setTimeout(tryStart, 50);
+        }
+      };
+      // Wake the old loop so it re-checks stopRequested and exits
+      this.deps.dbEvents.emit('new-message', '__resume__');
+      tryStart();
+    }
+  }
+
   async processGroupMessages(chatJid: string): Promise<boolean> {
     const group = this.registeredGroups[chatJid];
     if (!group) return true;
@@ -213,9 +244,15 @@ export class MessageOrchestrator {
       }, IDLE_TIMEOUT);
     };
 
+    // Acknowledge receipt with reaction
+    if (lastTriggerMessageId && this.deps.react) {
+      this.deps.react(chatJid, lastTriggerMessageId, '\u{1F440}').catch(() => {});
+    }
+
     let hadError = false;
     let outputSentToUser = false;
     let authErrorNotified = false;
+    let firstOutputSent = false;
 
     const output = await this.runAgent(group, prompt, chatJid, async (result) => {
       if (result.status === 'error') {
@@ -238,6 +275,11 @@ export class MessageOrchestrator {
         return;
       }
       if (result.result) {
+        // Clear acknowledgement reaction on first real output
+        if (!firstOutputSent && lastTriggerMessageId && this.deps.react) {
+          firstOutputSent = true;
+          this.deps.react(chatJid, lastTriggerMessageId, '').catch(() => {});
+        }
         const raw = typeof result.result === 'string' ? result.result : JSON.stringify(result.result);
         const text = this.deps.stripInternalTags(raw);
         this.deps.logger.info({ group: group.name }, `Agent output: ${raw.slice(0, 200)}`);
@@ -255,6 +297,9 @@ export class MessageOrchestrator {
     if (idleTimer) clearTimeout(idleTimer);
 
     if (output === 'error' || hadError) {
+      if (lastTriggerMessageId && this.deps.react) {
+        this.deps.react(chatJid, lastTriggerMessageId, '\u{274C}').catch(() => {});
+      }
       if (outputSentToUser) {
         this.consecutiveErrors[chatJid] = 0;
         this.deps.logger.warn(
@@ -475,6 +520,8 @@ export class MessageOrchestrator {
         this.deps.dbEvents.once('new-message', onEvent);
       });
     }
+
+    this.messageLoopRunning = false;
   }
 
   recoverPendingMessages(): void {

@@ -82,6 +82,19 @@ function buildContainerArgs(mounts: VolumeMount[], containerName: string): strin
     }
   }
 
+  // Mask .env inside any project mount to prevent raw secret access.
+  // Env vars are delivered via the filtered /workspace/env-dir/ mount.
+  const projectMount = mounts.find(m => m.containerPath === '/workspace/project');
+  if (projectMount) {
+    const hostEnv = path.join(projectMount.hostPath, '.env');
+    if (fs.existsSync(hostEnv)) {
+      args.push(
+        '--mount',
+        'type=bind,source=/dev/null,target=/workspace/project/.env,readonly',
+      );
+    }
+  }
+
   args.push(CONTAINER_IMAGE);
 
   return args;

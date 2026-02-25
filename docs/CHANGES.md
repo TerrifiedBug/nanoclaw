@@ -288,6 +288,10 @@ Upstream passes secrets via environment variables, which are visible to `env` an
 
 - **Group folder path validation** — Added max-length (64 chars) and reserved name (`global`) checks to folder validation. Malformed scheduled tasks are now paused instead of retrying forever (port of upstream 2e1c768, 02d8528)
 
+### .env masking via /dev/null overlay
+
+- When the project root is mounted into the main container (`/workspace/project`), `.env` is now masked by mounting `/dev/null` over it. Containers can't read raw secrets from the file — env vars are already delivered via the filtered `/workspace/env-dir/` mount (`src/container-runner.ts`)
+
 ### .env permissions warning
 
 - `readEnvFile()` warns on stderr if `.env` has group/other read permissions (mode > 600)
@@ -337,6 +341,10 @@ When users send videos or GIFs via WhatsApp, the agent receives an MP4 file that
 - **GIFs** (WhatsApp converts to MP4 with `gifPlayback: true`): presented as `[image: ...thumb.jpg]` so the agent treats it as a viewable image
 - **Regular videos**: presented as `[video: ...mp4]\n[thumbnail: ...thumb.jpg]` so the agent can preview without viewing the MP4
 - ffmpeg is an optional host dependency — the feature degrades gracefully without it
+
+### Magic bytes MIME detection
+
+WhatsApp sometimes declares incorrect MIME types for media (e.g., `image/jpeg` for a WebP or PNG file). Wrong MIME causes Claude API 400 errors when images are sent as vision inputs. The WhatsApp channel plugin now checks the buffer's magic bytes to detect the actual format (PNG, JPEG, GIF, WebP, PDF) and fixes the file extension if there's a mismatch (`plugins/channels/whatsapp/index.js`).
 
 ### How file sending works
 
@@ -395,6 +403,8 @@ These are clean fixes submitted to upstream. If they merge, the divergences coll
 - **Orphaned task auto-pause** — Tasks for deleted/missing groups are now auto-paused with a warning instead of failing repeatedly (`src/task-scheduler.ts`)
 - **Semver validation** — `parseManifest()` now validates `version` and `minCoreVersion` fields against semver format; malformed values are treated as undefined (`src/plugin-loader.ts`)
 - **Hook error handling** — `startup()`, `runInboundHooks()`, and `runOutboundHooks()` now catch and log errors per-plugin instead of letting one failing plugin take down the chain (`src/plugin-loader.ts`)
+- **WhatsApp exponential backoff** — Reconnect logic now uses exponential backoff (2s → 4s → 8s → ... capped at 5min) instead of a single 5s retry. Prevents log floods and resource exhaustion during persistent failures (port of upstream #466) (`plugins/channels/whatsapp/index.js`)
+- **WhatsApp protocol message filter** — Skip `protocolMessage`, `reactionMessage`, and `editedMessage` early in the handler before JID translation and metadata updates. Saves cycles on system messages that carry no user text (port of upstream #491) (`plugins/channels/whatsapp/index.js`)
 
 ---
 
@@ -546,6 +556,8 @@ Re-exports preserve backward compatibility — no consumer import changes needed
 | **Agent browser as plugin** | `plugins/agent-browser/` | Moved from `container/skills/` to plugin system |
 | **Token count badge** | `repo-tokens/badge.svg` | Auto-updated context window usage badge |
 | **React IPC + MCP tool** | `src/ipc.ts`, `container/agent-runner/src/ipc-mcp-stdio.ts` | Agents can send emoji reactions via IPC. Host-side handler + agent-side `react` MCP tool. Same authorization as `send_message`. Channel skills document when to use reactions |
+| **Emoji status reactions** | `src/orchestrator.ts`, `src/index.ts` | Lifecycle emoji reactions on trigger messages: `👀` on receipt, cleared on first output, `❌` on error. Uses the existing `Channel.react()` infrastructure |
+| **Emergency stop / resume** | `src/group-queue.ts`, `src/orchestrator.ts`, `src/ipc.ts`, `src/index.ts` | Main group agent can trigger `emergency_stop` or `resume_processing` via IPC to pause all message processing and kill active containers, then resume later. Useful for production incidents |
 | **GIF search skill** | `plugins/gif-search/` | Giphy API GIF search — returns both gif and mp4 URLs, defaults to GIF format for channel-agnostic compatibility |
 
 ---
