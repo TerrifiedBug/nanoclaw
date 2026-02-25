@@ -395,6 +395,8 @@ These are clean fixes submitted to upstream. If they merge, the divergences coll
 - **Orphaned task auto-pause** — Tasks for deleted/missing groups are now auto-paused with a warning instead of failing repeatedly (`src/task-scheduler.ts`)
 - **Semver validation** — `parseManifest()` now validates `version` and `minCoreVersion` fields against semver format; malformed values are treated as undefined (`src/plugin-loader.ts`)
 - **Hook error handling** — `startup()`, `runInboundHooks()`, and `runOutboundHooks()` now catch and log errors per-plugin instead of letting one failing plugin take down the chain (`src/plugin-loader.ts`)
+- **WhatsApp exponential backoff** — Reconnect logic now uses exponential backoff (2s → 4s → 8s → ... capped at 5min) instead of a single 5s retry. Prevents log floods and resource exhaustion during persistent failures (port of upstream #466) (`plugins/channels/whatsapp/index.js`)
+- **WhatsApp protocol message filter** — Skip `protocolMessage`, `reactionMessage`, and `editedMessage` early in the handler before JID translation and metadata updates. Saves cycles on system messages that carry no user text (port of upstream #491) (`plugins/channels/whatsapp/index.js`)
 
 ---
 
