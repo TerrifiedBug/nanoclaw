@@ -375,6 +375,7 @@ export class GroupQueue {
   resumeProcessing(): void {
     this.shuttingDown = false;
     logger.info('Queue resumed');
+    this.drainWaiting();
   }
 
   async shutdown(gracePeriodMs: number): Promise<void> {

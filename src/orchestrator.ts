@@ -173,13 +173,22 @@ export class MessageOrchestrator {
 
   /** Resume the message loop after a pause. */
   resume(): void {
-    if (!this.messageLoopRunning || this.stopRequested) {
+    if (this.stopRequested) {
       this.stopRequested = false;
-      this.messageLoopRunning = false;
-      this.startMessageLoop().catch((err) => {
-        this.deps.logger.error({ err }, 'Failed to restart message loop');
-      });
-      this.deps.logger.info('Message loop resumed');
+      // Wait for the old loop to fully exit before starting a new one
+      const tryStart = () => {
+        if (!this.messageLoopRunning) {
+          this.startMessageLoop().catch((err) => {
+            this.deps.logger.error({ err }, 'Failed to restart message loop');
+          });
+          this.deps.logger.info('Message loop resumed');
+        } else {
+          setTimeout(tryStart, 50);
+        }
+      };
+      // Wake the old loop so it re-checks stopRequested and exits
+      this.deps.dbEvents.emit('new-message', '__resume__');
+      tryStart();
     }
   }
 
@@ -511,6 +520,8 @@ export class MessageOrchestrator {
         this.deps.dbEvents.once('new-message', onEvent);
       });
     }
+
+    this.messageLoopRunning = false;
   }
 
   recoverPendingMessages(): void {
